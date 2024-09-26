@@ -1,15 +1,16 @@
-This repository is to document & collaborate of potential upcoming applications.
+This repository is for documenting and collaborating on potential upcoming applications.
 
 # Where are they?
 Go to [discussions](https://github.com/coollabsio/ideas/discussions).
 
-# Criterion
+# Requirements
 All apps should be:
+
 - Free
 - Open-source
 - Self-hostable
-- No feature behind paywall (if there would be a hosted version)
-- Cool (important!)
+- No features behind paywalls (if a hosted version exists)
+- Cool (this is important!)
 
 # Why?
-As I am ramen profitable with [Coolify](https://coolify.io?ref=coollabsideas) I realized that I should make more cool apps to help people.
+Since [Coolify](https://coolify.io?ref=coollabsideas) became ramen profitable, I've realized I should create more cool apps to help people.
