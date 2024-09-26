@@ -12,4 +12,4 @@ All apps should be:
 - Cool (important!)
 
 # Why?
-As I am ramen profitable with [Coolify](https://coolify.io) I realized that I should make more cool apps to help people.
+As I am ramen profitable with [Coolify](https://coolify.io?ref=coollabsideas) I realized that I should make more cool apps to help people.
