@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
@@ -6,9 +6,9 @@ const DB_PATH = resolve(process.env.DB_PATH ?? './data/sessions.db');
 
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
-export const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+export const db = new Database(DB_PATH, { create: true });
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (

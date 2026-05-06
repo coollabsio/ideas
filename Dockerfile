@@ -2,13 +2,11 @@
 
 FROM oven/bun:1-alpine AS deps
 WORKDIR /app
-RUN apk add --no-cache python3 make g++
 COPY package.json bun.lock* bun.lockb* ./
 RUN bun install --frozen-lockfile
 
 FROM oven/bun:1-alpine AS build
 WORKDIR /app
-RUN apk add --no-cache python3 make g++
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG GITHUB_TOKEN

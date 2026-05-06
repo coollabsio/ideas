@@ -9,7 +9,12 @@ export default defineConfig({
   integrations: [tailwind({ applyBaseStyles: false }), react()],
   vite: {
     ssr: {
-      external: ['better-sqlite3'],
+      external: ['bun:sqlite'],
+    },
+    build: {
+      rollupOptions: {
+        external: [/^bun:/],
+      },
     },
   },
 });
