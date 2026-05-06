@@ -8,6 +8,13 @@ export const prerender = false;
 export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
+  const error = url.searchParams.get('error');
+
+  if (error) {
+    if (state) consumeOAuthState(state);
+    return redirect('/', 302);
+  }
+
   if (!code || !state) {
     return new Response('Missing code or state', { status: 400 });
   }
