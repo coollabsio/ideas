@@ -4,6 +4,9 @@ import { db } from './db';
 export interface Session {
   sid: string;
   accessToken: string;
+  refreshToken: string | null;
+  tokenExpiresAt: number | null;
+  refreshTokenExpiresAt: number | null;
   login: string;
   avatarUrl: string;
   csrfToken: string;
@@ -13,20 +16,41 @@ export interface Session {
 interface SessionRow {
   sid: string;
   accessToken: string;
+  refreshToken: string | null;
+  tokenExpiresAt: number | null;
+  refreshTokenExpiresAt: number | null;
   login: string;
   avatarUrl: string;
   csrfToken: string;
   expiresAt: number;
 }
 
+export interface OAuthTokenSet {
+  accessToken: string;
+  refreshToken?: string | null;
+  expiresIn?: number | null;
+  refreshTokenExpiresIn?: number | null;
+}
+
 const insertSession = db.prepare(`
-  INSERT INTO sessions (sid, access_token, login, avatar_url, csrf_token, created_at, expires_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO sessions (
+    sid, access_token, refresh_token, token_expires_at, refresh_token_expires_at,
+    login, avatar_url, csrf_token, created_at, expires_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const updateTokens = db.prepare(`
+  UPDATE sessions
+  SET access_token = ?, refresh_token = ?, token_expires_at = ?, refresh_token_expires_at = ?
+  WHERE sid = ?
 `);
 
 const selectSession = db.prepare(`
   SELECT sid,
          access_token AS accessToken,
+         refresh_token AS refreshToken,
+         token_expires_at AS tokenExpiresAt,
+         refresh_token_expires_at AS refreshTokenExpiresAt,
          login,
          avatar_url AS avatarUrl,
          csrf_token AS csrfToken,
@@ -42,7 +66,7 @@ const selectState = db.prepare('SELECT created_at FROM oauth_state WHERE state =
 const deleteState = db.prepare('DELETE FROM oauth_state WHERE state = ?');
 
 export function createSession(
-  accessToken: string,
+  tokens: OAuthTokenSet,
   login: string,
   avatarUrl: string,
   ttlSec: number
@@ -51,8 +75,48 @@ export function createSession(
   const csrfToken = randomBytes(32).toString('hex');
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + ttlSec;
-  insertSession.run(sid, accessToken, login, avatarUrl, csrfToken, now, expiresAt);
-  return { sid, accessToken, login, avatarUrl, csrfToken, expiresAt };
+  const tokenExpiresAt = tokens.expiresIn ? now + tokens.expiresIn : null;
+  const refreshTokenExpiresAt = tokens.refreshTokenExpiresIn
+    ? now + tokens.refreshTokenExpiresIn
+    : null;
+  insertSession.run(
+    sid,
+    tokens.accessToken,
+    tokens.refreshToken ?? null,
+    tokenExpiresAt,
+    refreshTokenExpiresAt,
+    login,
+    avatarUrl,
+    csrfToken,
+    now,
+    expiresAt
+  );
+  return {
+    sid,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken ?? null,
+    tokenExpiresAt,
+    refreshTokenExpiresAt,
+    login,
+    avatarUrl,
+    csrfToken,
+    expiresAt,
+  };
+}
+
+export function updateSessionTokens(sid: string, tokens: OAuthTokenSet): void {
+  const now = Math.floor(Date.now() / 1000);
+  const tokenExpiresAt = tokens.expiresIn ? now + tokens.expiresIn : null;
+  const refreshTokenExpiresAt = tokens.refreshTokenExpiresIn
+    ? now + tokens.refreshTokenExpiresIn
+    : null;
+  updateTokens.run(
+    tokens.accessToken,
+    tokens.refreshToken ?? null,
+    tokenExpiresAt,
+    refreshTokenExpiresAt,
+    sid
+  );
 }
 
 export function getSession(sid: string | undefined): Session | null {

@@ -14,6 +14,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (
     sid TEXT PRIMARY KEY,
     access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    token_expires_at INTEGER,
+    refresh_token_expires_at INTEGER,
     login TEXT NOT NULL,
     avatar_url TEXT NOT NULL,
     csrf_token TEXT NOT NULL,

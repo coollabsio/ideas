@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
-import { getSession } from '~/lib/session';
-import { toggleUpvote } from '~/lib/github';
+import { deleteSession, getSession } from '~/lib/session';
+import { GitHubAuthError, getValidAccessToken, toggleUpvote } from '~/lib/github';
 
 export const prerender = false;
 
@@ -29,9 +29,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   }
 
   try {
-    const result = await toggleUpvote(body.discussionId, body.upvoted, session.accessToken);
+    const token = await getValidAccessToken(session);
+    const result = await toggleUpvote(body.discussionId, body.upvoted, token);
     return Response.json(result);
   } catch (err) {
+    if (err instanceof GitHubAuthError) {
+      deleteSession(session.sid);
+      cookies.delete('sid', { path: '/' });
+      return new Response('Session expired', { status: 401 });
+    }
     return new Response((err as Error).message, { status: 502 });
   }
 };
