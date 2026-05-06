@@ -24,4 +24,6 @@ COPY --from=build /app/package.json ./package.json
 RUN mkdir -p /app/data
 VOLUME ["/app/data"]
 EXPOSE 4321
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:${PORT}/api/health || exit 1
 CMD ["bun", "./dist/server/entry.mjs"]
