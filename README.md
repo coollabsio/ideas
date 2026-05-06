@@ -35,8 +35,8 @@ A small Astro + React app that:
 - [Astro 5](https://astro.build) (`output: 'server'`) + [`@astrojs/node`](https://docs.astro.build/en/guides/integrations-guide/node/)
 - [React 19](https://react.dev) for the auth island + shadcn-style primitives (`cva`, `clsx`, `tailwind-merge`, `lucide-react`)
 - [Tailwind CSS 3](https://tailwindcss.com) with the [Coolify](https://coolify.io) design tokens (Geist Sans + Geist Mono, dark-first, 2px radii, purple/yellow accent swap)
-- [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) for sessions
-- [Bun](https://bun.com) for install + dev + production runtime
+- [`bun:sqlite`](https://bun.com/docs/api/sqlite) (Bun's built-in SQLite) for OAuth session storage
+- [Bun](https://bun.com) ≥ 1.3 for install + dev + production runtime (scripts use `bun --bun astro …` to force Bun runtime over the `astro` shebang)
 
 ### Architecture
 
@@ -97,6 +97,8 @@ docker run --rm -p 4321:4321 \
 
 Mount `/app/data` to a persistent volume so user sessions survive redeploys.
 
+The container exposes a `HEALTHCHECK` against `GET /api/health` (Coolify-compatible). Configure Coolify health check path: `/api/health`, port `4321`, expected status `200`.
+
 ### Environment variables
 
 | Var | Required | Used at | Notes |
@@ -126,6 +128,7 @@ src/
       me.ts                  # auth probe + csrf token
       discussions.ts         # live list (anon: 30s cache)
       upvote.ts              # GraphQL addUpvote / removeUpvote
+      health.ts              # liveness probe (200 OK + DB ping)
   components/
     IdeaCard.astro
     AuthSlot.tsx             # React island, client:load
@@ -133,7 +136,7 @@ src/
     ui/{button,avatar}.tsx   # shadcn-style primitives
   lib/
     config.ts                # env validation (lazy)
-    db.ts                    # better-sqlite3 + schema + sweeper
+    db.ts                    # bun:sqlite + schema + sweeper
     session.ts               # session + oauth_state CRUD
     github.ts                # GraphQL queries/mutations
     utils.ts                 # cn() helper
