@@ -1,0 +1,106 @@
+@import '@fontsource/geist-sans/400.css';
+@import '@fontsource/geist-sans/500.css';
+@import '@fontsource/geist-sans/700.css';
+@import '@fontsource/geist-mono/400.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    background-color: #101010;
+    color: #a3a3a3;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    font-family: 'Geist Sans', Inter, sans-serif;
+    font-size: 0.875rem;
+  }
+
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: theme('colors.coolgray.200');
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: #ffffff;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  h1 {
+    font-size: 1.875rem;
+  }
+  h2 {
+    font-size: 1.25rem;
+  }
+  h3 {
+    font-size: 1.125rem;
+  }
+  h4 {
+    font-size: 1rem;
+  }
+
+  ::selection {
+    background-color: theme('colors.warning.DEFAULT');
+    color: #000;
+  }
+}
+
+@layer components {
+  .button {
+    @apply inline-flex h-8 items-center justify-center gap-2 rounded-sm border-2 border-coolgray-300 bg-coolgray-100 px-2 text-sm font-medium text-white outline-0 transition-colors hover:bg-coolgray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning focus-visible:ring-offset-2 focus-visible:ring-offset-base disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-neutral-600;
+  }
+
+  .button-highlighted {
+    @apply border-coollabs-100 bg-coollabs/20 text-white hover:bg-coollabs-100 hover:text-white;
+  }
+
+  .button-ghost {
+    @apply border-transparent bg-transparent hover:bg-coolgray-100;
+  }
+
+  .box {
+    @apply relative flex min-h-16 cursor-pointer flex-col rounded-sm border border-coolgray-300 bg-coolgray-100 p-2 text-white shadow-sm transition-colors hover:bg-coollabs-100 hover:no-underline lg:flex-row;
+  }
+
+  .box-static {
+    @apply relative flex min-h-16 flex-col rounded-sm border border-coolgray-300 bg-coolgray-100 p-2 text-white shadow-sm lg:flex-row;
+  }
+
+  .text-helper {
+    @apply font-bold text-warning;
+  }
+
+  .badge {
+    @apply inline-block h-3 w-3 rounded-full border border-black leading-none;
+  }
+  .badge-success {
+    @apply badge bg-success;
+  }
+  .badge-warning {
+    @apply badge bg-warning;
+  }
+  .badge-error {
+    @apply badge bg-error;
+  }
+}
+
+@layer utilities {
+  .scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.coollabs.100') theme('colors.coolgray.200');
+  }
+}

@@ -1,0 +1,10 @@
+node_modules
+dist
+.astro
+.env
+.env.local
+data
+.git
+.github
+*.log
+.DS_Store

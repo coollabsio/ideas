@@ -1,0 +1,61 @@
+---
+import type { Idea } from '~/lib/github';
+
+interface Props {
+  idea: Idea;
+}
+
+const { idea } = Astro.props;
+const excerpt =
+  idea.bodyText.length > 240 ? idea.bodyText.slice(0, 240).trimEnd() + '…' : idea.bodyText;
+const date = new Date(idea.createdAt).toLocaleDateString(undefined, {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+});
+---
+<article
+  class="idea-card group relative flex gap-3 rounded-sm border border-coolgray-300 bg-coolgray-100 p-3 shadow-sm transition-colors hover:border-coolgray-400"
+  data-id={idea.id}
+>
+  <button
+    type="button"
+    class:list={[
+      'upvote shrink-0 w-12 h-14 rounded-sm border-2 flex flex-col items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+      idea.viewerHasUpvoted
+        ? 'border-warning/50 bg-warning/15 text-warning'
+        : 'border-coolgray-300 bg-base text-neutral-400 hover:border-warning/40 hover:text-warning',
+    ]}
+    data-discussion-id={idea.id}
+    data-upvoted={idea.viewerHasUpvoted ? '1' : '0'}
+    aria-label={idea.viewerHasUpvoted ? 'Remove upvote' : 'Upvote'}
+  >
+    <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5l-7 7M12 5l7 7M12 5v14"/>
+    </svg>
+    <span class="count mt-1 font-mono text-sm font-bold leading-none">{idea.upvoteCount}</span>
+  </button>
+  <div class="min-w-0 flex-1">
+    <a
+      href={idea.url}
+      target="_blank"
+      rel="noopener"
+      class="block text-base font-bold leading-snug text-white hover:text-warning"
+    >
+      {idea.title}
+    </a>
+    <p class="mt-1 line-clamp-2 text-xs text-neutral-500">{excerpt}</p>
+    <div class="mt-2 flex items-center gap-2 text-[11px] uppercase tracking-wide text-neutral-500">
+      {idea.author && (
+        <>
+          <img src={idea.author.avatarUrl} alt="" class="h-4 w-4 rounded-full border border-coolgray-300" />
+          <span class="font-medium normal-case">{idea.author.login}</span>
+          <span aria-hidden="true">·</span>
+        </>
+      )}
+      <time datetime={idea.createdAt} class="font-mono normal-case">{date}</time>
+      <span aria-hidden="true">·</span>
+      <a href={idea.url} target="_blank" rel="noopener" class="font-mono normal-case hover:text-warning">#{idea.number}</a>
+    </div>
+  </div>
+</article>

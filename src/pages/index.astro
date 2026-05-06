@@ -1,0 +1,133 @@
+---
+import IdeaCard from '~/components/IdeaCard.astro';
+import { AuthSlot } from '~/components/AuthSlot.tsx';
+import { listIdeas, type Idea } from '~/lib/github';
+import '~/styles/global.css';
+
+export const prerender = true;
+
+let ideas: Idea[] = [];
+let buildError: string | null = null;
+
+const buildToken = process.env.GITHUB_TOKEN;
+if (!buildToken) {
+  buildError =
+    'GITHUB_TOKEN not set at build time — list will load from /api/discussions on the client.';
+} else {
+  try {
+    ideas = await listIdeas(buildToken);
+  } catch (err) {
+    buildError = `Build-time fetch failed: ${(err as Error).message}`;
+  }
+}
+
+const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
+---
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>coolLabs · Ideas</title>
+    <meta
+      name="description"
+      content="Upvote ideas for cool open-source apps from the coolLabs community. Synced live with GitHub Discussions."
+    />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#101010" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="coolLabs · Ideas" />
+    <meta property="og:description" content="Upvote ideas for cool open-source apps from the coolLabs community. Synced live with GitHub Discussions." />
+    <meta property="og:site_name" content="coolLabs Ideas" />
+    <meta property="og:image" content="/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@coolifyio" />
+    <meta name="twitter:title" content="coolLabs · Ideas" />
+    <meta name="twitter:description" content="Upvote ideas for cool open-source apps from the coolLabs community." />
+    <meta name="twitter:image" content="/og-image.png" />
+  </head>
+  <body class="min-h-screen bg-base text-neutral-400 antialiased">
+    <div class="mx-auto flex min-h-screen max-w-3xl flex-col px-4 lg:px-6">
+      <header class="flex items-center justify-between border-b border-coolgray-200 py-4">
+        <a href="/" class="flex items-center gap-2">
+          <span class="inline-block h-2 w-2 bg-warning"></span>
+          <span class="text-sm font-bold uppercase tracking-widest text-white">
+            Coollabs <span class="text-warning">/</span> Ideas
+          </span>
+        </a>
+        <AuthSlot client:load />
+      </header>
+
+      <main class="flex-1 py-6">
+        <section class="mb-6">
+          <h1 class="mb-2 text-3xl font-bold text-white">Ideas worth building.</h1>
+          <p class="max-w-xl text-sm leading-relaxed text-neutral-400">
+            Synced live with
+            <a
+              class="font-bold text-warning hover:underline"
+              href="https://github.com/coollabsio/ideas/discussions"
+              target="_blank"
+              rel="noopener">GitHub Discussions</a
+            >. Sign in with GitHub to upvote.
+          </p>
+          <dl class="mt-4 grid grid-cols-2 gap-2 sm:max-w-sm">
+            <div class="box-static flex-col items-start justify-center px-3 py-2">
+              <dt class="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Ideas</dt>
+              <dd class="font-mono text-lg font-bold text-white">{ideas.length}</dd>
+            </div>
+            <div class="box-static flex-col items-start justify-center px-3 py-2">
+              <dt class="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Upvotes</dt>
+              <dd class="font-mono text-lg font-bold text-white">{totalUpvotes}</dd>
+            </div>
+          </dl>
+        </section>
+
+        {
+          buildError && (
+            <div class="mb-4 rounded-lg border border-warning-800 bg-warning-900/30 px-4 py-3 text-sm text-warning-300">
+              <span class="font-bold text-warning-300">Notice ·</span> {buildError}
+            </div>
+          )
+        }
+
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-bold uppercase tracking-widest text-neutral-300">
+            <span class="text-warning">▸</span> All ideas
+          </h2>
+          <span class="font-mono text-xs text-neutral-500">sorted by upvotes</span>
+        </div>
+
+        <div id="ideas-list" class="space-y-2">
+          {ideas.map((idea) => <IdeaCard idea={idea} />)}
+        </div>
+
+        {
+          ideas.length === 0 && !buildError && (
+            <p class="rounded-sm border border-dashed border-coolgray-300 px-4 py-8 text-center text-sm text-neutral-500">
+              No ideas yet. Loading from GitHub…
+            </p>
+          )
+        }
+      </main>
+
+      <footer class="border-t border-coolgray-200 py-6 text-xs text-neutral-500">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span>
+            Built with <a href="https://astro.build" class="text-neutral-300 hover:text-warning">Astro</a> ·
+            Powered by <a href="https://coolify.io?ref=coollabsideas" class="text-neutral-300 hover:text-warning">Coolify</a>
+          </span>
+          <a
+            href="https://github.com/coollabsio/ideas"
+            target="_blank"
+            rel="noopener"
+            class="font-mono text-neutral-300 hover:text-warning"
+          >coollabsio/ideas</a>
+        </div>
+      </footer>
+    </div>
+    <script>
+      import '~/components/ideas-island.ts';
+    </script>
+  </body>
+</html>
