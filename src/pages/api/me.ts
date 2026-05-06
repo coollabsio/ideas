@@ -5,11 +5,17 @@ export const prerender = false;
 
 export const GET: APIRoute = ({ cookies }) => {
   const session = getSession(cookies.get('sid')?.value);
+  const headers = { 'cache-control': 'no-store' };
   if (!session) {
-    return Response.json({ user: null });
+    return new Response(JSON.stringify({ user: null }), {
+      headers: { ...headers, 'content-type': 'application/json' },
+    });
   }
-  return Response.json({
-    user: { login: session.login, avatarUrl: session.avatarUrl },
-    csrfToken: session.csrfToken,
-  });
+  return new Response(
+    JSON.stringify({
+      user: { login: session.login, avatarUrl: session.avatarUrl },
+      csrfToken: session.csrfToken,
+    }),
+    { headers: { ...headers, 'content-type': 'application/json' } }
+  );
 };
