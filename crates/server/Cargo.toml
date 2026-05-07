@@ -1,0 +1,36 @@
+[package]
+name = "ideas-server"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "ideas"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+axum-extra.workspace = true
+chrono.workspace = true
+clap.workspace = true
+ideas-domain = { path = "../domain" }
+ideas-storage = { path = "../storage" }
+mime_guess.workspace = true
+reqwest.workspace = true
+rust-embed.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tower = { workspace = true, features = ["util"] }

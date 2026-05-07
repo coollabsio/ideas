@@ -1,0 +1,65 @@
+export interface User {
+  login: string;
+  avatarUrl: string;
+}
+
+export interface Idea {
+  id: string;
+  title: string;
+  bodyText: string;
+  upvoteCount: number;
+  viewerHasUpvoted: boolean;
+  author: User;
+  createdAt: string;
+  updatedAt: string;
+  closed: boolean;
+}
+
+export interface MeResponse {
+  user: User | null;
+  csrfToken?: string | null;
+}
+
+export async function fetchMe(): Promise<MeResponse> {
+  const res = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
+  if (!res.ok) throw new Error(`Could not load session: HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function fetchIdeas(): Promise<Idea[]> {
+  const res = await fetch('/api/ideas', { credentials: 'same-origin', cache: 'no-store' });
+  if (!res.ok) throw new Error(`Could not load ideas: HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createIdea(title: string, body: string, csrfToken: string): Promise<Idea> {
+  const res = await fetch('/api/ideas', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+    body: JSON.stringify({ title, body })
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function setUpvote(id: string, upvoted: boolean, csrfToken: string): Promise<Idea> {
+  const res = await fetch(`/api/ideas/${id}/upvote`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+    body: JSON.stringify({ upvoted })
+  });
+  if (res.status === 401) window.location.href = '/api/auth/login';
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.idea;
+}
+
+export async function logout(csrfToken: string): Promise<void> {
+  await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'x-csrf-token': csrfToken }
+  });
+}
