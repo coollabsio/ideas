@@ -21,6 +21,7 @@ export interface Idea {
   author: { login: string; avatarUrl: string } | null;
   category: { name: string };
   createdAt: string;
+  closed: boolean;
 }
 
 export class GitHubAuthError extends Error {
@@ -193,7 +194,7 @@ export async function listIdeas(token: string): Promise<Idea[]> {
       repository(owner: $owner, name: $name) {
         discussions(first: 100, categoryId: $cat, orderBy: {field: UPDATED_AT, direction: DESC}) {
           nodes {
-            id number title bodyText url upvoteCount viewerHasUpvoted
+            id number title bodyText url upvoteCount viewerHasUpvoted closed
             author { login avatarUrl }
             category { name }
             createdAt
@@ -244,7 +245,7 @@ export async function createDiscussion(
     `mutation($repo: ID!, $cat: ID!, $title: String!, $body: String!) {
       createDiscussion(input: {repositoryId: $repo, categoryId: $cat, title: $title, body: $body}) {
         discussion {
-          id number title bodyText url upvoteCount viewerHasUpvoted
+          id number title bodyText url upvoteCount viewerHasUpvoted closed
           author { login avatarUrl }
           createdAt
         }

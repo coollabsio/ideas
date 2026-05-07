@@ -21,6 +21,8 @@ if (!buildToken) {
   }
 }
 
+const openIdeas = ideas.filter((i) => !i.closed);
+const closedIdeas = ideas.filter((i) => i.closed);
 const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
 ---
 <!doctype html>
@@ -77,7 +79,7 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
           <dl class="mt-4 grid grid-cols-2 gap-2 sm:max-w-sm">
             <div class="box-static flex-col items-start justify-center px-3 py-2">
               <dt class="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Ideas</dt>
-              <dd data-stat="ideas" class="font-mono text-lg font-bold text-white">{ideas.length}</dd>
+              <dd data-stat="ideas" class="font-mono text-lg font-bold text-white">{openIdeas.length}</dd>
             </div>
             <div class="box-static flex-col items-start justify-center px-3 py-2">
               <dt class="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Upvotes</dt>
@@ -102,14 +104,29 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
         </div>
 
         <div id="ideas-list" class="space-y-2">
-          {ideas.map((idea) => <IdeaCard idea={idea} />)}
+          {openIdeas.map((idea) => <IdeaCard idea={idea} />)}
         </div>
 
         {
-          ideas.length === 0 && !buildError && (
+          openIdeas.length === 0 && closedIdeas.length === 0 && !buildError && (
             <p class="rounded-sm border border-dashed border-coolgray-300 px-4 py-8 text-center text-sm text-neutral-500">
               No ideas yet. Loading from GitHub…
             </p>
+          )
+        }
+
+        {
+          closedIdeas.length > 0 && (
+            <details class="group mt-6">
+              <summary class="flex cursor-pointer list-none items-center gap-2 border-t border-coolgray-200 pt-4 text-sm font-bold uppercase tracking-widest text-neutral-500 hover:text-neutral-300">
+                <span class="text-neutral-600 transition-transform group-open:rotate-90">▸</span>
+                Closed ideas
+                <span class="font-mono text-xs text-neutral-600">({closedIdeas.length})</span>
+              </summary>
+              <div id="closed-ideas-list" class="mt-3 space-y-2">
+                {closedIdeas.map((idea) => <IdeaCard idea={idea} />)}
+              </div>
+            </details>
           )
         }
       </main>

@@ -43,6 +43,11 @@ const date = new Date(idea.createdAt).toLocaleDateString(undefined, {
       class="block text-base font-bold leading-snug text-white hover:text-warning"
     >
       {idea.title}
+      {idea.closed && (
+        <span class="ml-2 inline-block rounded-sm border border-error/50 bg-error/15 px-2 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wider text-error">
+          Closed
+        </span>
+      )}
     </a>
     <p class="mt-1 line-clamp-2 text-xs text-neutral-500">{excerpt}</p>
     <div class="mt-2 flex items-center gap-2 text-[11px] uppercase tracking-wide text-neutral-500">

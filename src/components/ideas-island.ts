@@ -14,6 +14,7 @@ interface CreatedIdea {
   viewerHasUpvoted: boolean;
   author: { login: string; avatarUrl: string } | null;
   createdAt: string;
+  closed: boolean;
 }
 
 const ACTIVE = ['border-warning/50', 'bg-warning/15', 'text-warning'];
