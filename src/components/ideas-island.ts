@@ -39,6 +39,18 @@ const INACTIVE = [
   'dark:hover:text-warning',
 ];
 
+function setUpvoteButtonsDisabled(disabled: boolean): void {
+  document.querySelectorAll<HTMLButtonElement>('button.upvote').forEach((btn) => {
+    btn.disabled = disabled;
+    btn.setAttribute('aria-busy', disabled ? 'true' : 'false');
+  });
+}
+
+function setButtonDisabled(btn: HTMLButtonElement, disabled: boolean): void {
+  btn.disabled = disabled;
+  btn.setAttribute('aria-busy', disabled ? 'true' : 'false');
+}
+
 function applyStyle(btn: HTMLButtonElement): void {
   const upvoted = btn.dataset.upvoted === '1';
   if (upvoted) {
@@ -61,6 +73,7 @@ function notifyLoginDisabled(): void {
 }
 
 async function refreshIdeas(): Promise<void> {
+  setUpvoteButtonsDisabled(true);
   try {
     const res = await fetch('/api/issues', { credentials: 'same-origin' });
     if (!res.ok) return;
@@ -77,6 +90,8 @@ async function refreshIdeas(): Promise<void> {
     }
   } catch (err) {
     console.error('issues refresh failed', err);
+  } finally {
+    setUpvoteButtonsDisabled(false);
   }
 }
 
@@ -96,7 +111,7 @@ async function handleUpvote(e: Event): Promise<void> {
   const issueNumber = Number.parseInt(btn.dataset.issueNumber ?? '', 10);
   if (!Number.isInteger(issueNumber)) return;
   const upvoted = btn.dataset.upvoted === '1';
-  btn.disabled = true;
+  setButtonDisabled(btn, true);
   try {
     const res = await fetch('/api/upvote', {
       method: 'POST',
@@ -117,7 +132,7 @@ async function handleUpvote(e: Event): Promise<void> {
   } catch (err) {
     console.error('upvote failed', err);
   } finally {
-    btn.disabled = false;
+    setButtonDisabled(btn, false);
   }
 }
 
@@ -163,7 +178,7 @@ function buildIdeaCard(idea: CreatedIdea): HTMLElement {
       data-upvoted="${idea.viewerHasUpvoted ? '1' : '0'}"
       aria-label="${idea.viewerHasUpvoted ? 'Remove upvote' : 'Upvote'}"
     >
-      <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <svg aria-hidden="true" viewBox="0 0 24 24" class="upvote-icon h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 5l-7 7M12 5l7 7M12 5v14"/>
       </svg>
       <span class="count mt-1 font-mono text-sm font-bold leading-none">${idea.upvoteCount}</span>
@@ -214,12 +229,12 @@ function handleIdeaCreated(e: Event): void {
 }
 
 function init(): void {
+  setUpvoteButtonsDisabled(true);
   document.querySelectorAll<HTMLButtonElement>('button.upvote').forEach(attachUpvoteHandler);
   window.addEventListener('auth:ready', () => {
     void refreshIdeas();
   });
   window.addEventListener('idea:created', handleIdeaCreated);
-  void refreshIdeas();
 }
 
 if (document.readyState === 'loading') {

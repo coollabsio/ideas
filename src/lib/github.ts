@@ -256,7 +256,8 @@ async function issueHasViewerUpvote(
   token: string
 ): Promise<boolean> {
   const reactions = await listIssueUpvoteReactions(issueNumber, token);
-  return reactions.some((r) => r.user?.login === viewerLogin);
+  const login = viewerLogin.toLowerCase();
+  return reactions.some((r) => r.user?.login.toLowerCase() === login);
 }
 
 async function listIssueUpvoteReactions(
@@ -293,7 +294,7 @@ export async function toggleUpvote(
 ): Promise<{ upvoteCount: number; viewerHasUpvoted: boolean }> {
   if (currentlyUpvoted) {
     const reaction = (await listIssueUpvoteReactions(issueNumber, token)).find(
-      (r) => r.user?.login === viewerLogin
+      (r) => r.user?.login.toLowerCase() === viewerLogin.toLowerCase()
     );
     if (reaction) {
       await gh<void>(
@@ -316,9 +317,10 @@ export async function toggleUpvote(
   }
 
   const issue = await gh<GitHubIssue>(`${repoPath()}/issues/${issueNumber}`, token);
+  const viewerHasUpvoted = await issueHasViewerUpvote(issueNumber, viewerLogin, token);
   return {
     upvoteCount: toIdea(issue).upvoteCount,
-    viewerHasUpvoted: !currentlyUpvoted,
+    viewerHasUpvoted,
   };
 }
 
