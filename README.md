@@ -28,7 +28,7 @@ A small Astro + React app that:
 - Supports **GitHub App user authorization** login.
 - Can temporarily disable GitHub login with `GITHUB_LOGIN_ENABLED=false` while keeping public browsing active.
 - Lets signed-in users **upvote** — votes are GitHub Issue `+1` reactions via the REST API.
-- Renders the list at **build time** for instant first paint, then refreshes counts on the client.
+- Renders the list at **build time** for instant first paint, then reconciles live ideas/counts on the client.
 - Uses **SQLite** only for GitHub session storage (no copy of ideas or votes).
 
 ### Stack
@@ -58,7 +58,7 @@ GET /api/issues ─────► (anon: 30s cache)
                        ────► REST issues ────────►   (server PAT)
 ```
 
-GitHub Issues are the single source of truth for idea content and new votes.
+GitHub Issues are the single source of truth for idea content and new votes. Issues opened directly on GitHub are auto-labeled `idea` by `.github/workflows/label-idea.yml`; issues created through the app also receive the label server-side.
 
 ### Local development
 
@@ -68,8 +68,8 @@ GitHub Issues are the single source of truth for idea content and new votes.
    - Repository permissions: `Metadata: read`, `Issues: read and write`
    - Install it only on `coollabsio/ideas`
    - Use the GitHub App **Client ID** and **Client secret** for `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`; this app does not send OAuth scopes.
-2. Create a fine-grained PAT scoped to `coollabsio/ideas` with `Issues: read`
-   This server token is separate from user auth and is used only for build-time prerender + the anonymous `/api/issues` cold path.
+2. Create a fine-grained PAT scoped to `coollabsio/ideas` with `Issues: read and write`
+   This server token is separate from user auth and is used for build-time prerender, the anonymous `/api/issues` cold path, and applying the `idea` label after user-created issues.
 3. Copy `.env.example` to `.env` and fill in `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_TOKEN`.
    - Set `GITHUB_LOGIN_ENABLED=false` if you need to temporarily disable sign-in and new authenticated actions.
 4. Install and run (requires [Bun](https://bun.com) ≥ 1.3):
@@ -111,7 +111,7 @@ The container exposes a `HEALTHCHECK` against `GET /api/health` (Coolify-compati
 | `GITHUB_CLIENT_ID` | yes | runtime | GitHub App client ID |
 | `GITHUB_CLIENT_SECRET` | yes | runtime | GitHub App client secret |
 | `GITHUB_LOGIN_ENABLED` | no | build + runtime | Defaults to `true`. Set to `false` to hide sign-in/new-idea UI and make `/api/auth/login` return 503. Anonymous idea listing still works. |
-| `GITHUB_TOKEN` | yes | build + runtime | PAT with `Issues: read` on `coollabsio/ideas`. Used for prerender + anon `/api/issues`. |
+| `GITHUB_TOKEN` | yes | build + runtime | PAT with `Issues: read and write` on `coollabsio/ideas`. Used for prerender, anon `/api/issues`, and server-side `idea` label application. |
 | `PUBLIC_BASE_URL` | yes | runtime | Public origin; must match the GitHub App callback URL |
 | `DB_PATH` | no | runtime | Defaults to `./data/sessions.db` |
 | `PORT` / `HOST` | no | runtime | Defaults to `4321` / `0.0.0.0` |

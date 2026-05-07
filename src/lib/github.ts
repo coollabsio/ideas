@@ -324,6 +324,19 @@ export async function toggleUpvote(
   };
 }
 
+async function ensureIdeaLabel(issueNumber: number): Promise<void> {
+  try {
+    await gh<unknown>(`${repoPath()}/issues/${issueNumber}/labels`, config.githubToken, {
+      method: 'POST',
+      body: JSON.stringify({ labels: [IDEA_LABEL] }),
+    });
+  } catch (err) {
+    throw new Error(
+      `Failed to add ${IDEA_LABEL} label to issue #${issueNumber}: ${(err as Error).message}`
+    );
+  }
+}
+
 export async function createIssue(
   title: string,
   body: string,
@@ -331,8 +344,9 @@ export async function createIssue(
 ): Promise<Idea> {
   const issue = await gh<GitHubIssue>(repoPath() + '/issues', token, {
     method: 'POST',
-    body: JSON.stringify({ title, body, labels: [IDEA_LABEL] }),
+    body: JSON.stringify({ title, body }),
   });
+  await ensureIdeaLabel(issue.number);
   return toIdea(issue, false);
 }
 

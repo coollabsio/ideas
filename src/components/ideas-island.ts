@@ -1,11 +1,4 @@
-interface IdeaSummary {
-  id: string;
-  number: number;
-  upvoteCount: number;
-  viewerHasUpvoted: boolean;
-}
-
-interface CreatedIdea {
+interface IdeaClient {
   id: string;
   number: number;
   title: string;
@@ -78,17 +71,8 @@ async function refreshIdeas(): Promise<void> {
   try {
     const res = await fetch('/api/issues', { credentials: 'same-origin' });
     if (!res.ok) return;
-    const ideas = (await res.json()) as IdeaSummary[];
-    for (const idea of ideas) {
-      const btn = document.querySelector<HTMLButtonElement>(
-        `button.upvote[data-issue-number="${idea.number}"]`
-      );
-      if (!btn) continue;
-      const countEl = btn.querySelector<HTMLElement>('.count');
-      if (countEl) countEl.textContent = String(idea.upvoteCount);
-      btn.dataset.upvoted = idea.viewerHasUpvoted ? '1' : '0';
-      applyStyle(btn);
-    }
+    const ideas = (await res.json()) as IdeaClient[];
+    reconcileIdeas(ideas);
   } catch (err) {
     console.error('issues refresh failed', err);
   } finally {
@@ -130,6 +114,7 @@ async function handleUpvote(e: Event): Promise<void> {
     if (countEl) countEl.textContent = String(data.upvoteCount);
     btn.dataset.upvoted = data.viewerHasUpvoted ? '1' : '0';
     applyStyle(btn);
+    void refreshIdeas();
   } catch (err) {
     console.error('upvote failed', err);
   } finally {
@@ -153,7 +138,7 @@ function attachUpvoteHandler(btn: HTMLButtonElement): void {
   applyStyle(btn);
 }
 
-function buildIdeaCard(idea: CreatedIdea): HTMLElement {
+function buildIdeaCard(idea: IdeaClient): HTMLElement {
   const excerpt =
     idea.bodyText.length > 240 ? idea.bodyText.slice(0, 240).trimEnd() + '…' : idea.bodyText;
   const date = new Date(idea.createdAt).toLocaleDateString(undefined, {
@@ -170,6 +155,9 @@ function buildIdeaCard(idea: CreatedIdea): HTMLElement {
   const upvotedClasses = idea.viewerHasUpvoted
     ? 'border-coollabs bg-coollabs-50 text-coollabs-200 dark:border-warning/50 dark:bg-warning/15 dark:text-warning'
     : 'border-neutral-200 bg-white text-neutral-500 hover:border-coollabs/40 hover:text-coollabs dark:border-coolgray-300 dark:bg-base dark:text-neutral-400 dark:hover:border-warning/40 dark:hover:text-warning';
+  const closedBadge = idea.closed
+    ? '<span class="ml-2 inline-block rounded-full border border-error/50 bg-error/10 px-2 py-0.5 align-middle text-xs font-bold uppercase tracking-wider text-error">Closed</span>'
+    : '';
 
   article.innerHTML = `
     <button
@@ -178,6 +166,7 @@ function buildIdeaCard(idea: CreatedIdea): HTMLElement {
       data-issue-number="${idea.number}"
       data-upvoted="${idea.viewerHasUpvoted ? '1' : '0'}"
       aria-label="${idea.viewerHasUpvoted ? 'Remove upvote' : 'Upvote'}"
+      aria-busy="false"
     >
       <svg aria-hidden="true" viewBox="0 0 24 24" class="upvote-icon h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 5l-7 7M12 5l7 7M12 5v14"/>
@@ -190,7 +179,7 @@ function buildIdeaCard(idea: CreatedIdea): HTMLElement {
         target="_blank"
         rel="noopener"
         class="box-title block text-base font-bold leading-snug hover:text-coollabs focus-visible:outline-none focus-visible:text-coollabs dark:hover:text-warning dark:focus-visible:text-warning before:absolute before:inset-0 before:content-['']"
-      >${escapeHtml(idea.title)}</a>
+      >${escapeHtml(idea.title)}${closedBadge}</a>
       <p class="box-description mt-1 line-clamp-2">${escapeHtml(excerpt)}</p>
       <div class="mt-2 flex items-center gap-2 text-xs uppercase tracking-wide text-neutral-500">
         ${
@@ -207,26 +196,82 @@ function buildIdeaCard(idea: CreatedIdea): HTMLElement {
   return article;
 }
 
-function bumpIdeasStat(): void {
-  const el = document.querySelector<HTMLElement>('[data-stat="ideas"]');
-  if (!el) return;
-  const n = Number.parseInt(el.textContent ?? '0', 10);
-  if (Number.isFinite(n)) el.textContent = String(n + 1);
+function renderCards(container: HTMLElement, ideas: IdeaClient[]): void {
+  const cards = ideas.map((idea) => {
+    const card = buildIdeaCard(idea);
+    const btn = card.querySelector<HTMLButtonElement>('button.upvote');
+    if (btn) attachUpvoteHandler(btn);
+    return card;
+  });
+  container.replaceChildren(...cards);
+}
+
+function ensureClosedIdeasList(closedCount: number): HTMLElement | null {
+  let list = document.getElementById('closed-ideas-list');
+  if (list || closedCount === 0) return list;
+
+  const openList = document.getElementById('ideas-list');
+  if (!openList?.parentElement) return null;
+
+  const details = document.createElement('details');
+  details.className = 'group mt-6';
+  details.innerHTML = `
+    <summary class="flex cursor-pointer list-none items-center gap-2 border-t border-neutral-200 pt-4 text-sm font-bold uppercase tracking-widest text-neutral-500 hover:text-neutral-700 dark:border-coolgray-200 dark:hover:text-neutral-300">
+      <span class="text-neutral-600 transition-transform group-open:rotate-90">▸</span>
+      Closed ideas
+      <span data-closed-count class="font-mono text-xs text-neutral-600">(0)</span>
+    </summary>
+    <div id="closed-ideas-list" class="mt-3 space-y-2"></div>
+  `;
+  openList.insertAdjacentElement('afterend', details);
+  list = document.getElementById('closed-ideas-list');
+  return list;
+}
+
+function updateStats(ideas: IdeaClient[]): void {
+  const openCount = ideas.filter((idea) => !idea.closed).length;
+  const totalUpvotes = ideas.reduce((acc, idea) => acc + idea.upvoteCount, 0);
+  const ideasEl = document.querySelector<HTMLElement>('[data-stat="ideas"]');
+  const upvotesEl = document.querySelector<HTMLElement>('[data-stat="upvotes"]');
+  const closedCountEl = document.querySelector<HTMLElement>('[data-closed-count]');
+  if (ideasEl) ideasEl.textContent = String(openCount);
+  if (upvotesEl) upvotesEl.textContent = String(totalUpvotes);
+  if (closedCountEl) {
+    const closedCount = ideas.length - openCount;
+    closedCountEl.textContent = `(${closedCount})`;
+  }
+}
+
+function reconcileIdeas(ideas: IdeaClient[]): void {
+  const openList = document.getElementById('ideas-list');
+  if (!openList) return;
+
+  const openIdeas = ideas.filter((idea) => !idea.closed);
+  const closedIdeas = ideas.filter((idea) => idea.closed);
+  renderCards(openList, openIdeas);
+
+  const closedList = ensureClosedIdeasList(closedIdeas.length);
+  if (closedList) {
+    renderCards(closedList, closedIdeas);
+    const details = closedList.closest('details');
+    if (details instanceof HTMLElement) details.hidden = closedIdeas.length === 0;
+  }
+
+  updateStats(ideas);
 }
 
 function handleIdeaCreated(e: Event): void {
-  const idea = (e as CustomEvent<CreatedIdea>).detail;
+  const idea = (e as CustomEvent<IdeaClient>).detail;
   if (!idea) return;
-  const list = document.getElementById('ideas-list');
-  if (!list) return;
-  const existing = list.querySelector<HTMLElement>(`[data-id="${CSS.escape(idea.id)}"]`);
-  if (existing) return;
-  const card = buildIdeaCard(idea);
-  list.prepend(card);
-  const btn = card.querySelector<HTMLButtonElement>('button.upvote');
-  if (btn) attachUpvoteHandler(btn);
-  bumpIdeasStat();
-  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const list = document.getElementById(idea.closed ? 'closed-ideas-list' : 'ideas-list');
+  if (list && !list.querySelector<HTMLElement>(`[data-id="${CSS.escape(idea.id)}"]`)) {
+    const card = buildIdeaCard(idea);
+    list.prepend(card);
+    const btn = card.querySelector<HTMLButtonElement>('button.upvote');
+    if (btn) attachUpvoteHandler(btn);
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  void refreshIdeas();
 }
 
 function init(): void {
