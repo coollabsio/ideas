@@ -5,7 +5,7 @@ import { GitHubAuthError, getValidAccessToken, toggleUpvote } from '~/lib/github
 export const prerender = false;
 
 interface Body {
-  discussionId?: string;
+  issueNumber?: number;
   upvoted?: boolean;
 }
 
@@ -24,13 +24,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   } catch {
     return new Response('Invalid JSON', { status: 400 });
   }
-  if (!body.discussionId || typeof body.upvoted !== 'boolean') {
+  if (typeof body.issueNumber !== 'number' || !Number.isInteger(body.issueNumber) || typeof body.upvoted !== 'boolean') {
     return new Response('Missing fields', { status: 400 });
   }
 
   try {
     const token = await getValidAccessToken(session);
-    const result = await toggleUpvote(body.discussionId, body.upvoted, token);
+    const result = await toggleUpvote(body.issueNumber, body.upvoted, token, session.login);
     return Response.json(result);
   } catch (err) {
     if (err instanceof GitHubAuthError) {

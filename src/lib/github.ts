@@ -6,9 +6,12 @@ import {
 } from './session';
 
 const GRAPHQL_URL = 'https://api.github.com/graphql';
+const REST_URL = 'https://api.github.com';
 const TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const UA = 'coollabs-ideas-app';
 const REFRESH_LEAD_SEC = 60;
+const IDEA_LABEL = 'idea';
+const LEGACY_UPVOTE_RE = /Legacy Discussion upvotes:\s*(\d+)/i;
 
 export interface Idea {
   id: string;
@@ -22,6 +25,7 @@ export interface Idea {
   category: { name: string };
   createdAt: string;
   closed: boolean;
+  legacyUpvoteCount: number;
 }
 
 export class GitHubAuthError extends Error {
@@ -44,6 +48,31 @@ interface TokenResponse {
   token_type?: string;
   error?: string;
   error_description?: string;
+}
+
+interface GitHubUser {
+  login: string;
+  avatar_url: string;
+}
+
+interface GitHubIssue {
+  id: number;
+  node_id: string;
+  number: number;
+  title: string;
+  body: string | null;
+  html_url: string;
+  state: 'open' | 'closed';
+  created_at: string;
+  user: GitHubUser | null;
+  reactions?: { '+1'?: number };
+  pull_request?: unknown;
+}
+
+interface GitHubReaction {
+  id: number;
+  content: string;
+  user: GitHubUser | null;
 }
 
 export async function exchangeCodeForToken(code: string): Promise<OAuthTokenSet> {
@@ -146,53 +175,177 @@ async function gql<T>(
   return json.data;
 }
 
-let cachedCategoryId: string | null = null;
-let cachedRepoId: string | null = null;
-
-export async function getRepositoryId(token: string): Promise<string> {
-  if (cachedRepoId) return cachedRepoId;
-  const data = await gql<{ repository: { id: string } }>(
-    `query($owner: String!, $name: String!) {
-      repository(owner: $owner, name: $name) { id }
-    }`,
-    { owner: config.repo.owner, name: config.repo.name },
-    token
-  );
-  cachedRepoId = data.repository.id;
-  return cachedRepoId;
+function repoPath(): string {
+  return `/repos/${config.repo.owner}/${config.repo.name}`;
 }
 
-export async function getIdeasCategoryId(token: string): Promise<string> {
-  if (cachedCategoryId) return cachedCategoryId;
-  const data = await gql<{
-    repository: { discussionCategories: { nodes: Array<{ id: string; name: string }> } };
-  }>(
-    `query($owner: String!, $name: String!) {
-      repository(owner: $owner, name: $name) {
-        discussionCategories(first: 25) { nodes { id name } }
-      }
-    }`,
-    { owner: config.repo.owner, name: config.repo.name },
-    token
-  );
-  const cat = data.repository.discussionCategories.nodes.find(
-    (c) => c.name === config.ideasCategory
-  );
-  if (!cat) {
-    throw new Error(
-      `Discussion category "${config.ideasCategory}" not found in ${config.repo.owner}/${config.repo.name}`
-    );
+async function gh<T>(
+  path: string,
+  token: string,
+  init: RequestInit = {}
+): Promise<T> {
+  const res = await fetch(`${REST_URL}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      'User-Agent': UA,
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...init.headers,
+    },
+  });
+  if (res.status === 401) {
+    throw new GitHubAuthError(`GitHub REST 401: ${await res.text()}`);
   }
-  cachedCategoryId = cat.id;
-  return cat.id;
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  if (!res.ok) {
+    throw new Error(`GitHub REST HTTP ${res.status}: ${await res.text()}`);
+  }
+  return (await res.json()) as T;
 }
 
-export async function listIdeas(token: string): Promise<Idea[]> {
-  const categoryId = await getIdeasCategoryId(token);
+async function ghPages<T>(path: string, token: string): Promise<T[]> {
+  const joiner = path.includes('?') ? '&' : '?';
+  const out: T[] = [];
+  for (let page = 1; ; page += 1) {
+    const batch = await gh<T[]>(`${path}${joiner}per_page=100&page=${page}`, token);
+    out.push(...batch);
+    if (batch.length < 100) return out;
+  }
+}
+
+function legacyUpvotes(body: string | null): number {
+  const match = body?.match(LEGACY_UPVOTE_RE);
+  return match ? Number.parseInt(match[1] ?? '0', 10) : 0;
+}
+
+function displayBody(body: string | null): string {
+  return (body ?? '').replace(/\n---\nMigrated from:[\s\S]*$/i, '').trim();
+}
+
+function toIdea(
+  issue: GitHubIssue,
+  viewerHasUpvoted = false
+): Idea {
+  const legacyUpvoteCount = legacyUpvotes(issue.body);
+  const reactionUpvotes = issue.reactions?.['+1'] ?? 0;
+  return {
+    id: issue.node_id,
+    number: issue.number,
+    title: issue.title,
+    bodyText: displayBody(issue.body),
+    url: issue.html_url,
+    upvoteCount: legacyUpvoteCount + reactionUpvotes,
+    viewerHasUpvoted,
+    author: issue.user
+      ? { login: issue.user.login, avatarUrl: issue.user.avatar_url }
+      : null,
+    category: { name: config.ideasCategory },
+    createdAt: issue.created_at,
+    closed: issue.state === 'closed',
+    legacyUpvoteCount,
+  };
+}
+
+async function issueHasViewerUpvote(
+  issueNumber: number,
+  viewerLogin: string,
+  token: string
+): Promise<boolean> {
+  const reactions = await listIssueUpvoteReactions(issueNumber, token);
+  return reactions.some((r) => r.user?.login === viewerLogin);
+}
+
+async function listIssueUpvoteReactions(
+  issueNumber: number,
+  token: string
+): Promise<GitHubReaction[]> {
+  return ghPages<GitHubReaction>(
+    `${repoPath()}/issues/${issueNumber}/reactions?content=%2B1`,
+    token
+  );
+}
+
+export async function listIdeas(token: string, viewerLogin?: string): Promise<Idea[]> {
+  const issues = await ghPages<GitHubIssue>(
+    `${repoPath()}/issues?state=all&labels=${encodeURIComponent(IDEA_LABEL)}`,
+    token
+  );
+  const ideas = await Promise.all(
+    issues.filter((issue) => !issue.pull_request).map(async (issue) => {
+      const viewerHasUpvoted = viewerLogin
+        ? await issueHasViewerUpvote(issue.number, viewerLogin, token)
+        : false;
+      return toIdea(issue, viewerHasUpvoted);
+    })
+  );
+  return ideas.sort((a, b) => b.upvoteCount - a.upvoteCount);
+}
+
+export async function toggleUpvote(
+  issueNumber: number,
+  currentlyUpvoted: boolean,
+  token: string,
+  viewerLogin: string
+): Promise<{ upvoteCount: number; viewerHasUpvoted: boolean }> {
+  if (currentlyUpvoted) {
+    const reaction = (await listIssueUpvoteReactions(issueNumber, token)).find(
+      (r) => r.user?.login === viewerLogin
+    );
+    if (reaction) {
+      await gh<void>(
+        `${repoPath()}/issues/${issueNumber}/reactions/${reaction.id}`,
+        token,
+        { method: 'DELETE' }
+      );
+    }
+  } else {
+    try {
+      await gh<GitHubReaction>(
+        `${repoPath()}/issues/${issueNumber}/reactions`,
+        token,
+        { method: 'POST', body: JSON.stringify({ content: '+1' }) }
+      );
+    } catch (err) {
+      // GitHub returns 422 if this user already has this exact reaction.
+      if (!(err as Error).message.includes('HTTP 422')) throw err;
+    }
+  }
+
+  const issue = await gh<GitHubIssue>(`${repoPath()}/issues/${issueNumber}`, token);
+  return {
+    upvoteCount: toIdea(issue).upvoteCount,
+    viewerHasUpvoted: !currentlyUpvoted,
+  };
+}
+
+export async function createIssue(
+  title: string,
+  body: string,
+  token: string
+): Promise<Idea> {
+  const issue = await gh<GitHubIssue>(repoPath() + '/issues', token, {
+    method: 'POST',
+    body: JSON.stringify({ title, body, labels: [IDEA_LABEL] }),
+  });
+  return toIdea(issue, false);
+}
+
+export async function fetchViewer(
+  token: string
+): Promise<{ login: string; avatarUrl: string }> {
+  const user = await gh<GitHubUser>('/user', token);
+  return { login: user.login, avatarUrl: user.avatar_url };
+}
+
+export async function listDiscussionsForMigration(token: string): Promise<Idea[]> {
   const data = await gql<{ repository: { discussions: { nodes: Idea[] } } }>(
-    `query($owner: String!, $name: String!, $cat: ID!) {
+    `query($owner: String!, $name: String!) {
       repository(owner: $owner, name: $name) {
-        discussions(first: 100, categoryId: $cat, orderBy: {field: UPDATED_AT, direction: DESC}) {
+        discussions(first: 100, orderBy: {field: UPDATED_AT, direction: DESC}) {
           nodes {
             id number title bodyText url upvoteCount viewerHasUpvoted closed
             author { login avatarUrl }
@@ -202,71 +355,11 @@ export async function listIdeas(token: string): Promise<Idea[]> {
         }
       }
     }`,
-    { owner: config.repo.owner, name: config.repo.name, cat: categoryId },
+    { owner: config.repo.owner, name: config.repo.name },
     token
   );
   return data.repository.discussions.nodes
     .filter((n) => n.category.name === config.ideasCategory)
+    .map((n) => ({ ...n, legacyUpvoteCount: n.upvoteCount }))
     .sort((a, b) => b.upvoteCount - a.upvoteCount);
-}
-
-export async function toggleUpvote(
-  discussionId: string,
-  currentlyUpvoted: boolean,
-  token: string
-): Promise<{ upvoteCount: number; viewerHasUpvoted: boolean }> {
-  const op = currentlyUpvoted ? 'removeUpvote' : 'addUpvote';
-  const data = await gql<
-    Record<string, { subject: { upvoteCount: number; viewerHasUpvoted: boolean } }>
-  >(
-    `mutation($id: ID!) {
-      ${op}(input: { subjectId: $id }) {
-        subject { ... on Discussion { upvoteCount viewerHasUpvoted } }
-      }
-    }`,
-    { id: discussionId },
-    token
-  );
-  return data[op].subject;
-}
-
-export async function createDiscussion(
-  title: string,
-  body: string,
-  token: string
-): Promise<Idea> {
-  const [repositoryId, categoryId] = await Promise.all([
-    getRepositoryId(token),
-    getIdeasCategoryId(token),
-  ]);
-  const data = await gql<{
-    createDiscussion: { discussion: Omit<Idea, 'category'> };
-  }>(
-    `mutation($repo: ID!, $cat: ID!, $title: String!, $body: String!) {
-      createDiscussion(input: {repositoryId: $repo, categoryId: $cat, title: $title, body: $body}) {
-        discussion {
-          id number title bodyText url upvoteCount viewerHasUpvoted closed
-          author { login avatarUrl }
-          createdAt
-        }
-      }
-    }`,
-    { repo: repositoryId, cat: categoryId, title, body },
-    token
-  );
-  return {
-    ...data.createDiscussion.discussion,
-    category: { name: config.ideasCategory },
-  };
-}
-
-export async function fetchViewer(
-  token: string
-): Promise<{ login: string; avatarUrl: string }> {
-  const data = await gql<{ viewer: { login: string; avatarUrl: string } }>(
-    `query { viewer { login avatarUrl } }`,
-    {},
-    token
-  );
-  return data.viewer;
 }

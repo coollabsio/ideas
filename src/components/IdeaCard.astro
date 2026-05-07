@@ -26,7 +26,7 @@ const date = new Date(idea.createdAt).toLocaleDateString(undefined, {
         ? 'border-coollabs bg-coollabs-50 text-coollabs-200 dark:border-warning/50 dark:bg-warning/15 dark:text-warning'
         : 'border-neutral-200 bg-white text-neutral-500 hover:border-coollabs/40 hover:text-coollabs dark:border-coolgray-300 dark:bg-base dark:text-neutral-400 dark:hover:border-warning/40 dark:hover:text-warning',
     ]}
-    data-discussion-id={idea.id}
+    data-issue-number={idea.number}
     data-upvoted={idea.viewerHasUpvoted ? '1' : '0'}
     aria-label={idea.viewerHasUpvoted ? 'Remove upvote' : 'Upvote'}
   >

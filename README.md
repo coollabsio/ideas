@@ -2,7 +2,7 @@
 
 A small web app + repository for documenting and upvoting potential upcoming applications.
 
-Live ideas: [github.com/coollabsio/ideas/discussions](https://github.com/coollabsio/ideas/discussions)
+Live ideas: [github.com/coollabsio/ideas/issues](https://github.com/coollabsio/ideas/issues)
 
 ## Requirements for ideas
 
@@ -24,10 +24,11 @@ Since [Coolify](https://coolify.io?ref=coollabsideas) became ramen profitable, I
 
 A small Astro + React app that:
 
-- Lists ideas from the **Ideas** category of `coollabsio/ideas` GitHub Discussions.
+- Lists ideas from `coollabsio/ideas` GitHub Issues with the `idea` label.
 - Supports **GitHub OAuth** login.
 - Can temporarily disable OAuth login with `GITHUB_LOGIN_ENABLED=false` while keeping public browsing active.
-- Lets signed-in users **upvote** — votes go straight to GitHub via the GraphQL `addUpvote` mutation. No middle layer.
+- Lets signed-in users **upvote** — votes are GitHub Issue `+1` reactions via the REST API.
+- Preserves migrated GitHub Discussion votes as legacy vote metadata in each issue body.
 - Renders the list at **build time** for instant first paint, then refreshes counts on the client.
 - Uses **SQLite** only for OAuth session storage (no copy of ideas or votes).
 
@@ -51,22 +52,24 @@ GET /api/me    ───►    sessions table (SQLite)
                                                        
 POST /api/upvote ─►    sessions table (lookup token)
                        ↓ x-csrf-token check
-                       ────► GraphQL addUpvote ───►   user upvote
+                       ────► REST issue reaction ─►   user +1
                        ◄──── upvoteCount ───────
                                                        
 GET /api/discussions ► (anon: 30s cache)                
-                       ────► GraphQL discussions ──►   (server PAT)
+                       ────► REST issues ────────►   (server PAT)
 ```
 
-GitHub is the single source of truth for ideas and votes. The app never stores either.
+GitHub Issues are the single source of truth for idea content and new votes. Migrated Discussion upvotes are preserved as `Legacy Discussion upvotes: N` metadata and included in app totals.
 
 ### Local development
 
 1. Create a GitHub OAuth App at https://github.com/settings/developers
    - Homepage URL: `http://localhost:4321`
    - Authorization callback URL: `http://localhost:4321/api/auth/callback`
-2. Create a fine-grained PAT scoped to `coollabsio/ideas` with `Discussions: read`
-   (or a classic PAT with `public_repo`). This is used for build-time prerender + the anonymous `/api/discussions` cold path.
+   - User OAuth scopes requested by the app: `read:user public_repo`
+   - With OAuth Apps, GitHub REST issue creation/reactions on public repos still require `public_repo`.
+2. Create a fine-grained PAT scoped to `coollabsio/ideas` with `Issues: read`
+   This server token is separate from user OAuth and is used only for build-time prerender + the anonymous `/api/discussions` cold path.
 3. Copy `.env.example` to `.env` and fill in `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_TOKEN`.
    - Set `GITHUB_LOGIN_ENABLED=false` if you need to temporarily disable sign-in and new authenticated actions.
 4. Install and run (requires [Bun](https://bun.com) ≥ 1.3):
@@ -108,7 +111,7 @@ The container exposes a `HEALTHCHECK` against `GET /api/health` (Coolify-compati
 | `GITHUB_CLIENT_ID` | yes | runtime | OAuth App client ID |
 | `GITHUB_CLIENT_SECRET` | yes | runtime | OAuth App client secret |
 | `GITHUB_LOGIN_ENABLED` | no | build + runtime | Defaults to `true`. Set to `false` to hide sign-in/new-idea UI and make `/api/auth/login` return 503. Anonymous idea listing still works. |
-| `GITHUB_TOKEN` | yes | build + runtime | PAT with `Discussions: read` on `coollabsio/ideas`. Used for prerender + anon `/api/discussions`. |
+| `GITHUB_TOKEN` | yes | build + runtime | PAT with `Issues: read` on `coollabsio/ideas`. Used for prerender + anon `/api/discussions`; migration additionally needs issue write. |
 | `PUBLIC_BASE_URL` | yes | runtime | Public origin; must match the OAuth callback URL |
 | `DB_PATH` | no | runtime | Defaults to `./data/sessions.db` |
 | `PORT` / `HOST` | no | runtime | Defaults to `4321` / `0.0.0.0` |
@@ -129,8 +132,8 @@ src/
     api/
       auth/{login,callback,logout}.ts
       me.ts                  # auth probe + csrf token
-      discussions.ts         # live list (anon: 30s cache)
-      upvote.ts              # GraphQL addUpvote / removeUpvote
+      discussions.ts         # live issue list (anon: 30s cache)
+      upvote.ts              # REST issue +1 reaction create/delete
       health.ts              # liveness probe (200 OK + DB ping)
   components/
     IdeaCard.astro
@@ -141,14 +144,31 @@ src/
     config.ts                # env validation (lazy)
     db.ts                    # bun:sqlite + schema + sweeper
     session.ts               # session + oauth_state CRUD
-    github.ts                # GraphQL queries/mutations
+    github.ts                # GitHub REST issue/reaction helpers + migration GraphQL read
     utils.ts                 # cn() helper
   styles/global.css          # Coolify tokens, .button, .box utilities
 public/
   favicon.png, apple-touch-icon.png, og-image.png
 data/
   sessions.db                # gitignored; mounted at /app/data in Docker
+  discussion-issue-map.json  # generated by migration script
 ```
+
+### Migrating existing Discussions to Issues
+
+Run a dry-run first:
+
+```bash
+bun run migrate:issues
+```
+
+Then create issues and write `data/discussion-issue-map.json`:
+
+```bash
+bun run migrate:issues --apply
+```
+
+Each migrated issue gets `idea` and `migrated-from-discussion` labels, a backlink to the original Discussion, and a `Legacy Discussion upvotes: N` marker. The app displays `legacy Discussion upvotes + GitHub Issue +1 reactions`; GitHub itself only shows new Issue reactions.
 
 ### License
 

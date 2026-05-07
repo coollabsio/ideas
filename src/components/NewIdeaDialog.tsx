@@ -86,7 +86,7 @@ export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.Reac
       open={open}
       onClose={handleClose}
       title="New idea"
-      description="Post a new idea to GitHub Discussions. Title and body are required."
+      description="Post a new idea as a GitHub Issue. Title and body are required."
     >
       <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-3">
         <div>
@@ -140,7 +140,7 @@ export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.Reac
             required
           />
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-600">
-            Posted to GitHub Discussions in the “Ideas” category as your account.
+            Posted to GitHub Issues with the “idea” label as your account.
           </p>
         </div>
 

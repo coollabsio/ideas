@@ -1,5 +1,6 @@
 interface IdeaSummary {
   id: string;
+  number: number;
   upvoteCount: number;
   viewerHasUpvoted: boolean;
 }
@@ -66,7 +67,7 @@ async function refreshIdeas(): Promise<void> {
     const ideas = (await res.json()) as IdeaSummary[];
     for (const idea of ideas) {
       const btn = document.querySelector<HTMLButtonElement>(
-        `button.upvote[data-discussion-id="${CSS.escape(idea.id)}"]`
+        `button.upvote[data-issue-number="${idea.number}"]`
       );
       if (!btn) continue;
       const countEl = btn.querySelector<HTMLElement>('.count');
@@ -92,8 +93,8 @@ async function handleUpvote(e: Event): Promise<void> {
     return;
   }
   if (!csrfToken) return;
-  const id = btn.dataset.discussionId;
-  if (!id) return;
+  const issueNumber = Number.parseInt(btn.dataset.issueNumber ?? '', 10);
+  if (!Number.isInteger(issueNumber)) return;
   const upvoted = btn.dataset.upvoted === '1';
   btn.disabled = true;
   try {
@@ -101,7 +102,7 @@ async function handleUpvote(e: Event): Promise<void> {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-      body: JSON.stringify({ discussionId: id, upvoted }),
+      body: JSON.stringify({ issueNumber, upvoted }),
     });
     if (res.status === 401) {
       location.href = '/api/auth/login';
@@ -158,7 +159,7 @@ function buildIdeaCard(idea: CreatedIdea): HTMLElement {
     <button
       type="button"
       class="upvote relative z-10 shrink-0 w-12 h-14 rounded-sm border flex flex-col items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coollabs dark:focus-visible:ring-warning focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-base disabled:cursor-not-allowed disabled:opacity-50 ${upvotedClasses}"
-      data-discussion-id="${escapeHtml(idea.id)}"
+      data-issue-number="${idea.number}"
       data-upvoted="${idea.viewerHasUpvoted ? '1' : '0'}"
       aria-label="${idea.viewerHasUpvoted ? 'Remove upvote' : 'Upvote'}"
     >

@@ -17,7 +17,7 @@ export const GET: APIRoute = async ({ cookies }) => {
 
   try {
     const token = session ? await getValidAccessToken(session) : config.githubToken;
-    const ideas = await listIdeas(token);
+    const ideas = await listIdeas(token, session?.login);
     if (!session) anonCache = { at: Date.now(), data: ideas };
     return Response.json(ideas);
   } catch (err) {

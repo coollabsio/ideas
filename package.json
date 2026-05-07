@@ -8,6 +8,7 @@
     "build": "bun --bun astro build",
     "start": "bun ./dist/server/entry.mjs",
     "preview": "bun --bun astro preview",
+    "migrate:issues": "bun scripts/migrate-discussions-to-issues.ts",
     "astro": "astro"
   },
   "packageManager": "bun@1.3.5",

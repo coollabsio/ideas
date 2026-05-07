@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { deleteSession, getSession } from '~/lib/session';
-import { GitHubAuthError, createDiscussion, getValidAccessToken } from '~/lib/github';
+import { GitHubAuthError, createIssue, getValidAccessToken } from '~/lib/github';
 
 export const prerender = false;
 
@@ -48,7 +48,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   try {
     const token = await getValidAccessToken(session);
-    const idea = await createDiscussion(title, body, token);
+    const idea = await createIssue(title, body, token);
     return Response.json(idea);
   } catch (err) {
     if (err instanceof GitHubAuthError) {
