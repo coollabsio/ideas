@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import { Button } from './button';
 
 interface DialogProps {
   open: boolean;
@@ -54,14 +53,14 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
       role="dialog"
       aria-modal="true"
       aria-labelledby="dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px] p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
         ref={cardRef}
-        className="relative w-full max-w-xl rounded-sm border border-coolgray-300 bg-coolgray-100 p-4 shadow-lg"
+        className="relative flex w-full flex-col rounded-sm border border-coolgray-300 bg-base p-4 drop-shadow-sm lg:w-auto lg:min-w-[42rem] lg:max-w-4xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-start justify-between gap-3">
@@ -73,14 +72,14 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
               <p className="mt-1 text-xs text-neutral-500">{description}</p>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
+            type="button"
             onClick={onClose}
             aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-coolgray-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning focus-visible:ring-offset-2 focus-visible:ring-offset-base"
           >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </Button>
+            <X className="h-6 w-6" strokeWidth={1.5} aria-hidden="true" />
+          </button>
         </div>
         {children}
       </div>

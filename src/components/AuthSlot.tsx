@@ -97,10 +97,7 @@ export function AuthSlot(): React.ReactElement {
         </Button>
 
         {!me.user ? (
-          <a
-            href="/api/auth/login"
-            className="inline-flex h-8 items-center justify-center gap-2 rounded-sm border-2 border-coolgray-300 bg-coolgray-100 px-2 text-sm font-medium text-white outline-0 transition-colors hover:bg-coolgray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning focus-visible:ring-offset-2 focus-visible:ring-offset-base"
-          >
+          <a href="/api/auth/login" className="button">
             <GithubMark className="h-4 w-4" />
             <span>Sign in</span>
           </a>

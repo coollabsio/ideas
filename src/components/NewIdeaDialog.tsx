@@ -14,8 +14,10 @@ const TITLE_MAX = 300;
 const BODY_MIN = 30;
 const BODY_MAX = 10000;
 
-const inputClass =
-  'w-full rounded-sm border-2 border-coolgray-300 bg-base px-2 py-1.5 text-sm text-white placeholder:text-neutral-600 outline-0 transition-colors focus:border-warning/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning focus-visible:ring-offset-2 focus-visible:ring-offset-coolgray-100 disabled:opacity-50';
+const inputClass = (dirty: boolean): string =>
+  `input ${dirty ? 'input-dirty' : ''}`;
+const textareaClass = (dirty: boolean): string =>
+  `input textarea min-h-40 resize-y ${dirty ? 'input-dirty' : ''}`;
 
 export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.ReactElement {
   const [title, setTitle] = useState('');
@@ -102,7 +104,7 @@ export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.Reac
           <input
             id="new-idea-title"
             type="text"
-            className={inputClass}
+            className={inputClass(title.length > 0)}
             placeholder="A short, descriptive title"
             value={title}
             maxLength={TITLE_MAX}
@@ -127,7 +129,7 @@ export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.Reac
           </div>
           <textarea
             id="new-idea-body"
-            className={`${inputClass} min-h-40 resize-y font-sans`}
+            className={textareaClass(body.length > 0)}
             placeholder="Describe the idea: what it does, why it's useful, any details that help others evaluate it. Markdown supported."
             value={body}
             maxLength={BODY_MAX}

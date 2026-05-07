@@ -72,8 +72,36 @@
     @apply border-transparent bg-transparent hover:bg-coolgray-100;
   }
 
+  .input {
+    @apply block w-full rounded-sm border-0 bg-coolgray-100 px-2 py-1.5 text-sm text-white placeholder:text-neutral-700 read-only:bg-coolgray-100/40 read-only:text-neutral-500 focus-visible:outline-none disabled:bg-coolgray-100/40 disabled:text-neutral-500;
+    box-shadow:
+      inset 4px 0 0 transparent,
+      inset 0 0 0 2px theme('colors.coolgray.300');
+  }
+  .input:focus-visible,
+  .input.input-dirty {
+    box-shadow:
+      inset 4px 0 0 theme('colors.warning.DEFAULT'),
+      inset 0 0 0 2px theme('colors.coolgray.300');
+  }
+  .input:disabled,
+  .input:read-only {
+    box-shadow: none;
+  }
+  .textarea {
+    @apply input font-mono;
+  }
+
   .box {
-    @apply relative flex min-h-16 cursor-pointer flex-col rounded-sm border border-coolgray-300 bg-coolgray-100 p-2 text-white shadow-sm transition-colors hover:bg-coollabs-100 hover:no-underline lg:flex-row;
+    @apply group relative flex min-h-16 cursor-pointer flex-col rounded-sm border border-coolgray-300 bg-coolgray-100 p-2 text-white shadow-sm transition-colors hover:bg-coollabs-100 hover:no-underline lg:flex-row;
+  }
+
+  .box-title {
+    @apply text-white group-hover:text-white;
+  }
+
+  .box-description {
+    @apply text-xs font-bold text-neutral-500 group-hover:text-white;
   }
 
   .box-static {

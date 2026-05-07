@@ -44,8 +44,9 @@ export default {
         mono: ['"Geist Mono"', 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', 'monospace'],
       },
       borderRadius: {
-        sm: '0.125rem',
+        sm: '0.25rem',
         DEFAULT: '0.25rem',
+        coolbox: '0.25rem',
         lg: '0.5rem',
       },
     },
