@@ -30,7 +30,6 @@ const date = new Date(idea.createdAt).toLocaleDateString(undefined, {
     data-upvoted={idea.viewerHasUpvoted ? '1' : '0'}
     aria-label={idea.viewerHasUpvoted ? 'Remove upvote' : 'Upvote'}
     aria-busy="true"
-    disabled
   >
     <svg aria-hidden="true" viewBox="0 0 24 24" class="upvote-icon h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 5l-7 7M12 5l7 7M12 5v14"/>

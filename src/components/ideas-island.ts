@@ -39,10 +39,11 @@ const INACTIVE = [
   'dark:hover:text-warning',
 ];
 
-function setUpvoteButtonsDisabled(disabled: boolean): void {
+function setUpvoteButtonsBusy(busy: boolean): void {
+  const shouldDisable = busy && Boolean(window.__ideasUser);
   document.querySelectorAll<HTMLButtonElement>('button.upvote').forEach((btn) => {
-    btn.disabled = disabled;
-    btn.setAttribute('aria-busy', disabled ? 'true' : 'false');
+    btn.disabled = shouldDisable;
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
   });
 }
 
@@ -73,7 +74,7 @@ function notifyLoginDisabled(): void {
 }
 
 async function refreshIdeas(): Promise<void> {
-  setUpvoteButtonsDisabled(true);
+  setUpvoteButtonsBusy(true);
   try {
     const res = await fetch('/api/issues', { credentials: 'same-origin' });
     if (!res.ok) return;
@@ -91,7 +92,7 @@ async function refreshIdeas(): Promise<void> {
   } catch (err) {
     console.error('issues refresh failed', err);
   } finally {
-    setUpvoteButtonsDisabled(false);
+    setUpvoteButtonsBusy(false);
   }
 }
 
@@ -229,7 +230,7 @@ function handleIdeaCreated(e: Event): void {
 }
 
 function init(): void {
-  setUpvoteButtonsDisabled(true);
+  setUpvoteButtonsBusy(true);
   document.querySelectorAll<HTMLButtonElement>('button.upvote').forEach(attachUpvoteHandler);
   window.addEventListener('auth:ready', () => {
     void refreshIdeas();
