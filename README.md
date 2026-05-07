@@ -58,7 +58,7 @@ GET /api/issues ─────► (anon: 30s cache)
                        ────► REST issues ────────►   (server PAT)
 ```
 
-GitHub Issues are the single source of truth for idea content and new votes. Issues opened directly on GitHub are auto-labeled `idea` by `.github/workflows/label-idea.yml`; issues created through the app also receive the label server-side.
+GitHub Issues are the single source of truth for idea content and new votes. Issues opened directly on GitHub are auto-labeled `idea` by `.github/workflows/label-idea.yml`; adding `notanidea` skips that automation and removes `idea`. Issues created through the app also receive the label server-side.
 
 ### Local development
 
