@@ -63,11 +63,12 @@ GitHub Issues are the single source of truth for idea content and new votes. Mig
 
 ### Local development
 
-1. Create a GitHub OAuth App at https://github.com/settings/developers
+1. Create a GitHub App at https://github.com/settings/apps/new
    - Homepage URL: `http://localhost:4321`
-   - Authorization callback URL: `http://localhost:4321/api/auth/callback`
-   - User OAuth scopes requested by the app: `read:user public_repo`
-   - With OAuth Apps, GitHub REST issue creation/reactions on public repos still require `public_repo`.
+   - Callback URL: `http://localhost:4321/api/auth/callback`
+   - Repository permissions: `Metadata: read`, `Issues: read and write`
+   - Install it only on `coollabsio/ideas`
+   - Use the GitHub App **Client ID** and **Client secret** for `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`; this app does not send OAuth scopes.
 2. Create a fine-grained PAT scoped to `coollabsio/ideas` with `Issues: read`
    This server token is separate from user OAuth and is used only for build-time prerender + the anonymous `/api/discussions` cold path.
 3. Copy `.env.example` to `.env` and fill in `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_TOKEN`.
@@ -108,8 +109,8 @@ The container exposes a `HEALTHCHECK` against `GET /api/health` (Coolify-compati
 
 | Var | Required | Used at | Notes |
 |---|---|---|---|
-| `GITHUB_CLIENT_ID` | yes | runtime | OAuth App client ID |
-| `GITHUB_CLIENT_SECRET` | yes | runtime | OAuth App client secret |
+| `GITHUB_CLIENT_ID` | yes | runtime | GitHub App client ID |
+| `GITHUB_CLIENT_SECRET` | yes | runtime | GitHub App client secret |
 | `GITHUB_LOGIN_ENABLED` | no | build + runtime | Defaults to `true`. Set to `false` to hide sign-in/new-idea UI and make `/api/auth/login` return 503. Anonymous idea listing still works. |
 | `GITHUB_TOKEN` | yes | build + runtime | PAT with `Issues: read` on `coollabsio/ideas`. Used for prerender + anon `/api/discussions`; migration additionally needs issue write. |
 | `PUBLIC_BASE_URL` | yes | runtime | Public origin; must match the OAuth callback URL |
