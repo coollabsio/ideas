@@ -52,10 +52,17 @@ export function AuthSlot(): React.ReactElement {
   }, []);
 
   async function logout(): Promise<void> {
-    await fetch('/api/auth/logout', {
+    const csrfToken = window.__ideasCsrfToken;
+    const res = await fetch('/api/auth/logout', {
       method: 'POST',
       credentials: 'same-origin',
+      headers: {
+        'content-type': 'application/json',
+        ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
+      },
+      body: '{}',
     });
+    if (!res.ok) return;
     window.__ideasUser = null;
     window.__ideasCsrfToken = null;
     setMe({ user: null });

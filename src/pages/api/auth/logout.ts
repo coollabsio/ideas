@@ -1,12 +1,20 @@
 import type { APIRoute } from 'astro';
 import { config } from '~/lib/config';
-import { deleteSession } from '~/lib/session';
+import { deleteSession, getSession } from '~/lib/session';
 
 export const prerender = false;
 
-export const POST: APIRoute = ({ cookies }) => {
+export const POST: APIRoute = ({ request, cookies }) => {
   const sid = cookies.get('sid')?.value;
-  if (sid) deleteSession(sid);
+  const session = getSession(sid);
+
+  if (session) {
+    const csrfHeader = request.headers.get('x-csrf-token');
+    if (csrfHeader !== session.csrfToken) {
+      return new Response('Invalid CSRF token', { status: 403 });
+    }
+    deleteSession(session.sid);
+  }
 
   cookies.set('sid', '', {
     httpOnly: true,
