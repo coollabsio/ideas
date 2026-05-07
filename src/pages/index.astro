@@ -13,7 +13,7 @@ let buildError: string | null = null;
 const buildToken = process.env.GITHUB_TOKEN;
 if (!buildToken) {
   buildError =
-    'GITHUB_TOKEN not set at build time — list will load from /api/discussions on the client.';
+    'GITHUB_TOKEN not set at build time — list will load from /api/issues on the client.';
 } else {
   try {
     ideas = await listIdeas(buildToken);

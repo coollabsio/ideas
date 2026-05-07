@@ -62,7 +62,7 @@ function notifyLoginDisabled(): void {
 
 async function refreshIdeas(): Promise<void> {
   try {
-    const res = await fetch('/api/discussions', { credentials: 'same-origin' });
+    const res = await fetch('/api/issues', { credentials: 'same-origin' });
     if (!res.ok) return;
     const ideas = (await res.json()) as IdeaSummary[];
     for (const idea of ideas) {
@@ -76,7 +76,7 @@ async function refreshIdeas(): Promise<void> {
       applyStyle(btn);
     }
   } catch (err) {
-    console.error('discussions refresh failed', err);
+    console.error('issues refresh failed', err);
   }
 }
 

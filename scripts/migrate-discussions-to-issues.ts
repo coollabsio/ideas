@@ -117,7 +117,7 @@ Migrated from: ${discussion.url}
 Legacy Discussion upvotes: ${discussion.upvoteCount}
 `;
 
-  return gh<Issue>(`/repos/${OWNER}/${REPO}/issues`, {
+  const issue = await gh<Issue>(`/repos/${OWNER}/${REPO}/issues`, {
     method: 'POST',
     body: JSON.stringify({
       title: discussion.title,
@@ -125,6 +125,13 @@ Legacy Discussion upvotes: ${discussion.upvoteCount}
       labels: ['idea', 'migrated-from-discussion'],
     }),
   });
+
+  await gh(`/repos/${OWNER}/${REPO}/issues/${issue.number}/labels`, {
+    method: 'POST',
+    body: JSON.stringify({ labels: ['idea', 'migrated-from-discussion'] }),
+  });
+
+  return issue;
 }
 
 async function loadMap(): Promise<MigrationMap> {

@@ -25,19 +25,19 @@ Since [Coolify](https://coolify.io?ref=coollabsideas) became ramen profitable, I
 A small Astro + React app that:
 
 - Lists ideas from `coollabsio/ideas` GitHub Issues with the `idea` label.
-- Supports **GitHub OAuth** login.
-- Can temporarily disable OAuth login with `GITHUB_LOGIN_ENABLED=false` while keeping public browsing active.
+- Supports **GitHub App user authorization** login.
+- Can temporarily disable GitHub login with `GITHUB_LOGIN_ENABLED=false` while keeping public browsing active.
 - Lets signed-in users **upvote** — votes are GitHub Issue `+1` reactions via the REST API.
 - Preserves migrated GitHub Discussion votes as legacy vote metadata in each issue body.
 - Renders the list at **build time** for instant first paint, then refreshes counts on the client.
-- Uses **SQLite** only for OAuth session storage (no copy of ideas or votes).
+- Uses **SQLite** only for GitHub session storage (no copy of ideas or votes).
 
 ### Stack
 
 - [Astro 5](https://astro.build) (`output: 'server'`) + [`@astrojs/node`](https://docs.astro.build/en/guides/integrations-guide/node/)
 - [React 19](https://react.dev) for the auth island + shadcn-style primitives (`cva`, `clsx`, `tailwind-merge`, `lucide-react`)
 - [Tailwind CSS 3](https://tailwindcss.com) with the [Coolify](https://coolify.io) design tokens (Geist Sans + Geist Mono, dark-first, 4px `rounded-sm` radii, purple/yellow accent swap)
-- [`bun:sqlite`](https://bun.com/docs/api/sqlite) (Bun's built-in SQLite) for OAuth session storage
+- [`bun:sqlite`](https://bun.com/docs/api/sqlite) (Bun's built-in SQLite) for GitHub session storage
 - [Bun](https://bun.com) ≥ 1.3 for install + dev + production runtime (scripts use `bun --bun astro …` to force Bun runtime over the `astro` shebang)
 
 ### Architecture
@@ -55,7 +55,7 @@ POST /api/upvote ─►    sessions table (lookup token)
                        ────► REST issue reaction ─►   user +1
                        ◄──── upvoteCount ───────
                                                        
-GET /api/discussions ► (anon: 30s cache)                
+GET /api/issues ─────► (anon: 30s cache)                
                        ────► REST issues ────────►   (server PAT)
 ```
 
@@ -70,7 +70,7 @@ GitHub Issues are the single source of truth for idea content and new votes. Mig
    - Install it only on `coollabsio/ideas`
    - Use the GitHub App **Client ID** and **Client secret** for `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`; this app does not send OAuth scopes.
 2. Create a fine-grained PAT scoped to `coollabsio/ideas` with `Issues: read`
-   This server token is separate from user OAuth and is used only for build-time prerender + the anonymous `/api/discussions` cold path.
+   This server token is separate from user auth and is used only for build-time prerender + the anonymous `/api/issues` cold path.
 3. Copy `.env.example` to `.env` and fill in `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_TOKEN`.
    - Set `GITHUB_LOGIN_ENABLED=false` if you need to temporarily disable sign-in and new authenticated actions.
 4. Install and run (requires [Bun](https://bun.com) ≥ 1.3):
@@ -112,8 +112,8 @@ The container exposes a `HEALTHCHECK` against `GET /api/health` (Coolify-compati
 | `GITHUB_CLIENT_ID` | yes | runtime | GitHub App client ID |
 | `GITHUB_CLIENT_SECRET` | yes | runtime | GitHub App client secret |
 | `GITHUB_LOGIN_ENABLED` | no | build + runtime | Defaults to `true`. Set to `false` to hide sign-in/new-idea UI and make `/api/auth/login` return 503. Anonymous idea listing still works. |
-| `GITHUB_TOKEN` | yes | build + runtime | PAT with `Issues: read` on `coollabsio/ideas`. Used for prerender + anon `/api/discussions`; migration additionally needs issue write. |
-| `PUBLIC_BASE_URL` | yes | runtime | Public origin; must match the OAuth callback URL |
+| `GITHUB_TOKEN` | yes | build + runtime | PAT with `Issues: read` on `coollabsio/ideas`. Used for prerender + anon `/api/issues`; migration additionally needs issue write. |
+| `PUBLIC_BASE_URL` | yes | runtime | Public origin; must match the GitHub App callback URL |
 | `DB_PATH` | no | runtime | Defaults to `./data/sessions.db` |
 | `PORT` / `HOST` | no | runtime | Defaults to `4321` / `0.0.0.0` |
 
@@ -121,7 +121,7 @@ The container exposes a `HEALTHCHECK` against `GET /api/health` (Coolify-compati
 
 - Session cookie holds an **opaque random `sid`** only; access tokens are stored server-side in SQLite. Cookie flags: `HttpOnly`, `Secure` (when `PUBLIC_BASE_URL` is HTTPS), `SameSite=Lax`, `Max-Age=7d`.
 - Per-session **CSRF token** is required as `x-csrf-token` header on `POST /api/upvote`.
-- OAuth flow uses one-time `state` nonces stored in SQLite, consumed and time-bounded (10 min).
+- GitHub authorization flow uses one-time `state` nonces stored in SQLite, consumed and time-bounded (10 min).
 - Session sweep runs at startup and every hour to delete expired rows.
 
 ### Project layout
@@ -133,7 +133,8 @@ src/
     api/
       auth/{login,callback,logout}.ts
       me.ts                  # auth probe + csrf token
-      discussions.ts         # live issue list (anon: 30s cache)
+      issues.ts              # live issue list (anon: 30s cache)
+      discussions.ts         # backward-compatible alias for /api/issues
       upvote.ts              # REST issue +1 reaction create/delete
       health.ts              # liveness probe (200 OK + DB ping)
   components/
@@ -144,7 +145,7 @@ src/
   lib/
     config.ts                # env validation (lazy)
     db.ts                    # bun:sqlite + schema + sweeper
-    session.ts               # session + oauth_state CRUD
+    session.ts               # session + auth state CRUD
     github.ts                # GitHub REST issue/reaction helpers + migration GraphQL read
     utils.ts                 # cn() helper
   styles/global.css          # Coolify tokens, .button, .box utilities
