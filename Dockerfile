@@ -9,8 +9,6 @@ FROM oven/bun:1-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ARG GITHUB_TOKEN
-ENV GITHUB_TOKEN=$GITHUB_TOKEN
 RUN bun run build
 
 FROM oven/bun:1-alpine AS runtime

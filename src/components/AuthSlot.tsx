@@ -83,10 +83,6 @@ export function AuthSlot({ githubLoginEnabled = true }: AuthSlotProps): React.Re
 
   function handleNewIdeaClick(): void {
     if (!browserGithubLoginEnabled(githubLoginEnabled)) return;
-    if (!me.user) {
-      window.location.href = '/api/auth/login';
-      return;
-    }
     setDialogOpen(true);
   }
 

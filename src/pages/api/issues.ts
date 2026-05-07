@@ -1,25 +1,29 @@
 import type { APIRoute } from 'astro';
-import { config } from '~/lib/config';
 import { GitHubAuthError, getValidAccessToken, listIdeas } from '~/lib/github';
+import { getAnonIdeas } from '~/lib/ideas-cache';
 import { deleteSession, getSession } from '~/lib/session';
 
 export const prerender = false;
 
-const CACHE_TTL_MS = 30_000;
-let anonCache: { at: number; data: unknown } | null = null;
-
 export const GET: APIRoute = async ({ cookies }) => {
   const session = getSession(cookies.get('sid')?.value);
 
-  if (!session && anonCache && Date.now() - anonCache.at < CACHE_TTL_MS) {
-    return Response.json(anonCache.data);
-  }
-
   try {
-    const token = session ? await getValidAccessToken(session) : config.githubToken;
-    const ideas = await listIdeas(token, session?.login);
-    if (!session) anonCache = { at: Date.now(), data: ideas };
-    return Response.json(ideas);
+    if (!session) {
+      return Response.json(await getAnonIdeas(), {
+        headers: {
+          'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=30',
+          'CDN-Cache-Control': 'max-age=60',
+          Vary: 'Cookie',
+        },
+      });
+    }
+
+    const token = await getValidAccessToken(session);
+    const ideas = await listIdeas(token, session.login);
+    return Response.json(ideas, {
+      headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie' },
+    });
   } catch (err) {
     if (err instanceof GitHubAuthError && session) {
       deleteSession(session.sid);

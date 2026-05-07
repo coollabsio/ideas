@@ -27,8 +27,9 @@ A small Astro + React app that:
 - Lists ideas from `coollabsio/ideas` GitHub Issues with the `idea` label.
 - Supports **GitHub App user authorization** login.
 - Can temporarily disable GitHub login with `GITHUB_LOGIN_ENABLED=false` while keeping public browsing active.
+- Opens prefilled GitHub Issues for new ideas, so GitHub remains the source of truth and issue author.
 - Lets signed-in users **upvote** — votes are GitHub Issue `+1` reactions via the REST API.
-- Renders the list at **build time** for instant first paint, then reconciles live ideas/counts on the client.
+- Renders the public list with **runtime SSR** and a 60s anonymous cache, then reconciles personalized state on the client.
 - Uses **SQLite** only for GitHub session storage (no copy of ideas or votes).
 
 ### Stack
@@ -44,7 +45,8 @@ A small Astro + React app that:
 ```
 Browser                Astro/Bun (server)               GitHub
 ───────                ─────────────────                ──────
-GET /          ───►    prerendered HTML
+GET /          ───►    runtime SSR (anon: 60s cache)
+                       ────► REST issues ────────►   (server PAT)
                                                        
 GET /api/me    ───►    sessions table (SQLite)         
                        ↓ {user, csrfToken}
@@ -54,11 +56,11 @@ POST /api/upvote ─►    sessions table (lookup token)
                        ────► REST issue reaction ─►   user +1
                        ◄──── upvoteCount ───────
                                                        
-GET /api/issues ─────► (anon: 30s cache)                
+GET /api/issues ─────► (anon: 60s cache)                
                        ────► REST issues ────────►   (server PAT)
 ```
 
-GitHub Issues are the single source of truth for idea content and new votes. Issues opened directly on GitHub are auto-labeled `idea` by `.github/workflows/label-idea.yml`; adding `notanidea` skips that automation and removes `idea`. Issues created through the app also receive the label server-side.
+GitHub Issues are the single source of truth for idea content and new votes. New ideas open GitHub's issue creation page with the title/body prefilled, so the submitting GitHub account is the issue author. Issues opened on GitHub are auto-labeled `idea` by `.github/workflows/label-idea.yml`; adding `notanidea` skips that automation and removes `idea`.
 
 ### Local development
 
@@ -69,7 +71,7 @@ GitHub Issues are the single source of truth for idea content and new votes. Iss
    - Install it only on `coollabsio/ideas`
    - Use the GitHub App **Client ID** and **Client secret** for `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`; this app does not send OAuth scopes.
 2. Create a fine-grained PAT scoped to `coollabsio/ideas` with `Issues: read and write`
-   This server token is separate from user auth and is used for build-time prerender, the anonymous `/api/issues` cold path, and applying the `idea` label after user-created issues.
+   This server token is separate from user auth and is used at runtime for public SSR and the anonymous `/api/issues` cold path.
 3. Copy `.env.example` to `.env` and fill in `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_TOKEN`.
    - Set `GITHUB_LOGIN_ENABLED=false` if you need to temporarily disable sign-in and new authenticated actions.
 4. Install and run (requires [Bun](https://bun.com) ≥ 1.3):
@@ -90,7 +92,7 @@ bun ./dist/server/entry.mjs
 ### Deploy (Coolify / Docker)
 
 ```bash
-docker build -t coollabs-ideas --build-arg GITHUB_TOKEN=$GITHUB_TOKEN .
+docker build -t coollabs-ideas .
 docker run --rm -p 4321:4321 \
   -e GITHUB_CLIENT_ID=... \
   -e GITHUB_CLIENT_SECRET=... \
@@ -104,14 +106,16 @@ Mount `/app/data` to a persistent volume so user sessions survive redeploys.
 
 The container exposes a `HEALTHCHECK` against `GET /api/health` (Coolify-compatible). Configure Coolify health check path: `/api/health`, port `4321`, expected status `200`.
 
+If deploying behind Cloudflare, configure cache rules to respect origin headers for `/` and anonymous `/api/issues`. Bypass cache when a `sid` cookie is present, and never cache authenticated or mutating routes (`/api/me`, `/api/auth/*`, `/api/upvote`, `/api/create-idea`). Anonymous HTML/API responses are intentionally CDN-cacheable for up to 60s; authenticated responses use `private, no-store`.
+
 ### Environment variables
 
 | Var | Required | Used at | Notes |
 |---|---|---|---|
 | `GITHUB_CLIENT_ID` | yes | runtime | GitHub App client ID |
 | `GITHUB_CLIENT_SECRET` | yes | runtime | GitHub App client secret |
-| `GITHUB_LOGIN_ENABLED` | no | build + runtime | Defaults to `true`. Set to `false` to hide sign-in/new-idea UI and make `/api/auth/login` return 503. Anonymous idea listing still works. |
-| `GITHUB_TOKEN` | yes | build + runtime | PAT with `Issues: read and write` on `coollabsio/ideas`. Used for prerender, anon `/api/issues`, and server-side `idea` label application. |
+| `GITHUB_LOGIN_ENABLED` | no | runtime | Defaults to `true`. Set to `false` to hide sign-in/new-idea UI and make `/api/auth/login` return 503. Anonymous idea listing still works. |
+| `GITHUB_TOKEN` | yes | runtime | PAT with `Issues: read and write` on `coollabsio/ideas`. Used for public SSR, anon `/api/issues`, and server-side `idea` label application. |
 | `PUBLIC_BASE_URL` | yes | runtime | Public origin; must match the GitHub App callback URL |
 | `DB_PATH` | no | runtime | Defaults to `./data/sessions.db` |
 | `PORT` / `HOST` | no | runtime | Defaults to `4321` / `0.0.0.0` |
@@ -128,11 +132,11 @@ The container exposes a `HEALTHCHECK` against `GET /api/health` (Coolify-compati
 ```
 src/
   pages/
-    index.astro              # build-time prerendered list + auth island
+    index.astro              # runtime SSR list + auth island
     api/
       auth/{login,callback,logout}.ts
       me.ts                  # auth probe + csrf token
-      issues.ts              # live issue list (anon: 30s cache)
+      issues.ts              # live issue list (anon: 60s cache)
       discussions.ts         # backward-compatible alias for /api/issues
       upvote.ts              # REST issue +1 reaction create/delete
       health.ts              # liveness probe (200 OK + DB ping)
@@ -146,6 +150,7 @@ src/
     db.ts                    # bun:sqlite + schema + sweeper
     session.ts               # session + auth state CRUD
     github.ts                # GitHub REST issue/reaction helpers
+    ideas-cache.ts           # shared 60s anonymous idea cache
     utils.ts                 # cn() helper
   styles/global.css          # Coolify tokens, .button, .box utilities
 public/

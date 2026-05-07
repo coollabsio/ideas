@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { deleteSession, getSession } from '~/lib/session';
 import { GitHubAuthError, getValidAccessToken, toggleUpvote } from '~/lib/github';
+import { invalidateIdeasCache } from '~/lib/ideas-cache';
 
 export const prerender = false;
 
@@ -31,6 +32,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   try {
     const token = await getValidAccessToken(session);
     const result = await toggleUpvote(body.issueNumber, body.upvoted, token, session.login);
+    invalidateIdeasCache();
     return Response.json(result);
   } catch (err) {
     if (err instanceof GitHubAuthError) {

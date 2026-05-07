@@ -2,24 +2,25 @@
 import IdeaCard from '~/components/IdeaCard.astro';
 import { AuthSlot } from '~/components/AuthSlot.tsx';
 import { config } from '~/lib/config';
-import { listIdeas, type Idea } from '~/lib/github';
+import { getAnonIdeas } from '~/lib/ideas-cache';
+import type { Idea } from '~/lib/github';
 import '~/styles/global.css';
 
-export const prerender = true;
+export const prerender = false;
+
+Astro.response.headers.set(
+  'Cache-Control',
+  'public, max-age=0, s-maxage=60, stale-while-revalidate=30'
+);
+Astro.response.headers.set('CDN-Cache-Control', 'max-age=60');
 
 let ideas: Idea[] = [];
-let buildError: string | null = null;
+let runtimeError: string | null = null;
 
-const buildToken = process.env.GITHUB_TOKEN;
-if (!buildToken) {
-  buildError =
-    'GITHUB_TOKEN not set at build time — list will load from /api/issues on the client.';
-} else {
-  try {
-    ideas = await listIdeas(buildToken);
-  } catch (err) {
-    buildError = `Build-time fetch failed: ${(err as Error).message}`;
-  }
+try {
+  ideas = await getAnonIdeas();
+} catch (err) {
+  runtimeError = `Live fetch failed: ${(err as Error).message}`;
 }
 
 const openIdeas = ideas.filter((i) => !i.closed);
@@ -109,9 +110,9 @@ const githubLoginEnabled = config.githubLoginEnabled;
         </section>
 
         {
-          buildError && (
+          runtimeError && (
             <div class="callout callout-warning mb-4 text-sm">
-              <span class="font-bold text-warning-800 dark:text-warning-300">Notice ·</span> {buildError}
+              <span class="font-bold text-warning-800 dark:text-warning-300">Notice ·</span> {runtimeError}
             </div>
           )
         }
@@ -128,7 +129,7 @@ const githubLoginEnabled = config.githubLoginEnabled;
         </div>
 
         {
-          openIdeas.length === 0 && closedIdeas.length === 0 && !buildError && (
+          openIdeas.length === 0 && closedIdeas.length === 0 && !runtimeError && (
             <p class="rounded-sm border border-dashed border-neutral-300 px-4 py-8 text-center text-sm text-neutral-500 dark:border-coolgray-300">
               No ideas yet. Loading from GitHub…
             </p>

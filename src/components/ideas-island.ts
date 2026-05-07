@@ -69,7 +69,12 @@ function notifyLoginDisabled(): void {
 async function refreshIdeas(): Promise<void> {
   setUpvoteButtonsBusy(true);
   try {
-    const res = await fetch('/api/issues', { credentials: 'same-origin' });
+    const authenticated = Boolean(window.__ideasUser);
+    const res = await fetch('/api/issues', {
+      credentials: 'same-origin',
+      cache: authenticated ? 'no-store' : 'default',
+      headers: authenticated ? { 'cache-control': 'no-cache' } : undefined,
+    });
     if (!res.ok) return;
     const ideas = (await res.json()) as IdeaClient[];
     reconcileIdeas(ideas);
