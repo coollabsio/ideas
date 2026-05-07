@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useState } from 'react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import type { Idea } from '~/lib/github';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
@@ -44,7 +45,7 @@ export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.Reac
     onClose();
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>): Promise<void> {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement | HTMLButtonElement>): Promise<void> {
     e.preventDefault();
     if (!canSubmit) return;
     setSubmitting(true);
@@ -90,12 +91,12 @@ export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.Reac
       <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-3">
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <label htmlFor="new-idea-title" className="text-xs font-bold uppercase tracking-widest text-neutral-300">
+            <label htmlFor="new-idea-title" className="text-xs font-bold uppercase tracking-widest text-neutral-700 dark:text-neutral-300">
               Title
             </label>
             <span
-              className={`font-mono text-[10px] ${
-                titleValid ? 'text-neutral-500' : 'text-warning'
+              className={`font-mono text-xs ${
+                titleValid ? 'text-neutral-500' : 'text-coollabs dark:text-warning'
               }`}
             >
               {titleLen}/{TITLE_MAX}
@@ -116,12 +117,12 @@ export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.Reac
 
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <label htmlFor="new-idea-body" className="text-xs font-bold uppercase tracking-widest text-neutral-300">
+            <label htmlFor="new-idea-body" className="text-xs font-bold uppercase tracking-widest text-neutral-700 dark:text-neutral-300">
               Body
             </label>
             <span
-              className={`font-mono text-[10px] ${
-                bodyValid ? 'text-neutral-500' : 'text-warning'
+              className={`font-mono text-xs ${
+                bodyValid ? 'text-neutral-500' : 'text-coollabs dark:text-warning'
               }`}
             >
               {bodyLen}/{BODY_MAX}
@@ -138,14 +139,15 @@ export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.Reac
             rows={8}
             required
           />
-          <p className="mt-1 text-[10px] text-neutral-600">
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-600">
             Posted to GitHub Discussions in the “Ideas” category as your account.
           </p>
         </div>
 
         {error && (
-          <div className="rounded-sm border border-error/50 bg-error/10 px-3 py-2 text-xs text-error">
-            {error}
+          <div className="callout callout-danger flex items-start gap-2 text-xs">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
+            <span>{error}</span>
           </div>
         )}
 
@@ -159,7 +161,14 @@ export function NewIdeaDialog({ open, onClose }: NewIdeaDialogProps): React.Reac
             disabled={!canSubmit}
             onClick={(e) => void handleSubmit(e)}
           >
-            {submitting ? 'Posting…' : 'Post idea'}
+            {submitting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <span>Posting…</span>
+              </>
+            ) : (
+              'Post idea'
+            )}
           </Button>
         </div>
       </form>

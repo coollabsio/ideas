@@ -34,7 +34,7 @@ A small Astro + React app that:
 
 - [Astro 5](https://astro.build) (`output: 'server'`) + [`@astrojs/node`](https://docs.astro.build/en/guides/integrations-guide/node/)
 - [React 19](https://react.dev) for the auth island + shadcn-style primitives (`cva`, `clsx`, `tailwind-merge`, `lucide-react`)
-- [Tailwind CSS 3](https://tailwindcss.com) with the [Coolify](https://coolify.io) design tokens (Geist Sans + Geist Mono, dark-first, 2px radii, purple/yellow accent swap)
+- [Tailwind CSS 3](https://tailwindcss.com) with the [Coolify](https://coolify.io) design tokens (Geist Sans + Geist Mono, dark-first, 4px `rounded-sm` radii, purple/yellow accent swap)
 - [`bun:sqlite`](https://bun.com/docs/api/sqlite) (Bun's built-in SQLite) for OAuth session storage
 - [Bun](https://bun.com) ≥ 1.3 for install + dev + production runtime (scripts use `bun --bun astro …` to force Bun runtime over the `astro` shebang)
 

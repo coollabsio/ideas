@@ -26,7 +26,7 @@ const closedIdeas = ideas.filter((i) => i.closed);
 const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
 ---
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -50,55 +50,70 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
     <meta name="twitter:title" content="coolLabs · Ideas" />
     <meta name="twitter:description" content="Upvote ideas for cool open-source apps from the coolLabs community." />
     <meta name="twitter:image" content="/og-image.png" />
+    <script is:inline>
+      (() => {
+        try {
+          const stored = localStorage.getItem('theme');
+          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const dark =
+            stored === 'dark' ||
+            stored === null ||
+            (stored === 'system' && prefersDark);
+          document.documentElement.classList.toggle('dark', dark);
+        } catch {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
     <script defer data-domain="ideas.coollabs.io" src="https://analytics.coollabs.io/js/script.js" is:inline></script>
   </head>
-  <body class="min-h-screen bg-base text-neutral-400 antialiased">
-    <div class="mx-auto flex min-h-screen max-w-3xl flex-col px-4 lg:px-6">
-      <header class="flex items-center justify-between border-b border-coolgray-200 py-4">
+  <body class="scrollbar min-h-screen bg-gray-50 text-neutral-600 antialiased dark:bg-base dark:text-neutral-400">
+    <div class="mx-auto flex min-h-screen max-w-3xl flex-col">
+      <header class="flex items-center justify-between border-b border-neutral-200 px-4 py-4 dark:border-coolgray-200 sm:px-6 lg:px-8">
         <a href="/" class="flex items-center gap-2">
-          <span class="inline-block h-2 w-2 bg-warning"></span>
-          <span class="text-sm font-bold uppercase tracking-widest text-white">
-            Coollabs <span class="text-warning">/</span> Ideas
+          <span class="inline-block h-2 w-2 bg-coollabs dark:bg-warning"></span>
+          <span class="text-sm font-bold uppercase tracking-widest text-black dark:text-white">
+            Coollabs <span class="text-coollabs dark:text-warning">/</span> Ideas
           </span>
         </a>
         <AuthSlot client:load />
       </header>
 
-      <main class="flex-1 py-6">
-        <section class="mb-6">
-          <h1 class="mb-2 text-3xl font-bold text-white">Ideas worth building.</h1>
-          <p class="max-w-xl text-sm leading-relaxed text-neutral-400">
+      <main class="flex-1 p-4 sm:px-6 lg:px-8 lg:py-6">
+        <section class="mb-12">
+          <h1 class="mb-2 text-3xl font-bold text-black dark:text-white">Ideas worth building.</h1>
+          <p class="max-w-xl text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
             Synced live with
             <a
-              class="font-bold text-warning hover:underline"
+              class="font-bold text-coollabs hover:underline dark:text-warning"
               href="https://github.com/coollabsio/ideas/discussions"
               target="_blank"
               rel="noopener">GitHub Discussions</a
             >. Sign in with GitHub to upvote.
           </p>
-          <dl class="mt-4 grid grid-cols-2 gap-2 sm:max-w-sm">
-            <div class="box-static flex-col items-start justify-center px-3 py-2">
-              <dt class="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Ideas</dt>
-              <dd data-stat="ideas" class="font-mono text-lg font-bold text-white">{openIdeas.length}</dd>
+          <dl class="mt-4 flex flex-wrap gap-2 sm:max-w-sm">
+            <div class="box-static min-w-[9rem] flex-1 flex-col items-start justify-center px-3 py-2">
+              <dt class="text-xs font-bold uppercase tracking-widest text-neutral-500">Ideas</dt>
+              <dd data-stat="ideas" class="font-mono text-lg font-bold text-black dark:text-white">{openIdeas.length}</dd>
             </div>
-            <div class="box-static flex-col items-start justify-center px-3 py-2">
-              <dt class="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Upvotes</dt>
-              <dd data-stat="upvotes" class="font-mono text-lg font-bold text-white">{totalUpvotes}</dd>
+            <div class="box-static min-w-[9rem] flex-1 flex-col items-start justify-center px-3 py-2">
+              <dt class="text-xs font-bold uppercase tracking-widest text-neutral-500">Upvotes</dt>
+              <dd data-stat="upvotes" class="font-mono text-lg font-bold text-black dark:text-white">{totalUpvotes}</dd>
             </div>
           </dl>
         </section>
 
         {
           buildError && (
-            <div class="mb-4 rounded-lg border border-warning-800 bg-warning-900/30 p-4 text-sm text-warning-200">
-              <span class="font-bold text-warning-300">Notice ·</span> {buildError}
+            <div class="callout callout-warning mb-4 text-sm">
+              <span class="font-bold text-warning-800 dark:text-warning-300">Notice ·</span> {buildError}
             </div>
           )
         }
 
         <div class="mb-3 flex items-center justify-between">
-          <h2 class="text-sm font-bold uppercase tracking-widest text-neutral-300">
-            <span class="text-warning">▸</span> All ideas
+          <h2 class="text-sm font-bold uppercase tracking-widest text-neutral-700 dark:text-neutral-300">
+            <span class="text-coollabs dark:text-warning">▸</span> All ideas
           </h2>
           <span class="font-mono text-xs text-neutral-500">sorted by upvotes</span>
         </div>
@@ -109,7 +124,7 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
 
         {
           openIdeas.length === 0 && closedIdeas.length === 0 && !buildError && (
-            <p class="rounded-sm border border-dashed border-coolgray-300 px-4 py-8 text-center text-sm text-neutral-500">
+            <p class="rounded-sm border border-dashed border-neutral-300 px-4 py-8 text-center text-sm text-neutral-500 dark:border-coolgray-300">
               No ideas yet. Loading from GitHub…
             </p>
           )
@@ -118,7 +133,7 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
         {
           closedIdeas.length > 0 && (
             <details class="group mt-6">
-              <summary class="flex cursor-pointer list-none items-center gap-2 border-t border-coolgray-200 pt-4 text-sm font-bold uppercase tracking-widest text-neutral-500 hover:text-neutral-300">
+              <summary class="flex cursor-pointer list-none items-center gap-2 border-t border-neutral-200 pt-4 text-sm font-bold uppercase tracking-widest text-neutral-500 hover:text-neutral-700 dark:border-coolgray-200 dark:hover:text-neutral-300">
                 <span class="text-neutral-600 transition-transform group-open:rotate-90">▸</span>
                 Closed ideas
                 <span class="font-mono text-xs text-neutral-600">({closedIdeas.length})</span>
@@ -131,17 +146,17 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
         }
       </main>
 
-      <footer class="border-t border-coolgray-200 py-6 text-xs text-neutral-500">
+      <footer class="border-t border-neutral-200 px-4 py-6 text-xs text-neutral-500 dark:border-coolgray-200 sm:px-6 lg:px-8">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span>
-            Built with <a href="https://astro.build" class="text-neutral-300 hover:text-warning">Astro</a> ·
-            Powered by <a href="https://coolify.io?ref=coollabsideas" class="text-neutral-300 hover:text-warning">Coolify</a>
+            Built with <a href="https://astro.build" class="text-neutral-700 hover:text-coollabs dark:text-neutral-300 dark:hover:text-warning">Astro</a> ·
+            Powered by <a href="https://coolify.io?ref=coollabsideas" class="text-neutral-700 hover:text-coollabs dark:text-neutral-300 dark:hover:text-warning">Coolify</a>
           </span>
           <a
             href="https://github.com/coollabsio/ideas"
             target="_blank"
             rel="noopener"
-            class="font-mono text-neutral-300 hover:text-warning"
+            class="font-mono text-neutral-700 hover:text-coollabs dark:text-neutral-300 dark:hover:text-warning"
           >coollabsio/ideas</a>
         </div>
       </footer>

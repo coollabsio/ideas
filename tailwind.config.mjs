@@ -49,6 +49,9 @@ export default {
         coolbox: '0.25rem',
         lg: '0.5rem',
       },
+      backdropBlur: {
+        xs: '2px',
+      },
     },
   },
   plugins: [],

@@ -17,13 +17,25 @@ interface CreatedIdea {
   closed: boolean;
 }
 
-const ACTIVE = ['border-warning/50', 'bg-warning/15', 'text-warning'];
+const ACTIVE = [
+  'border-coollabs',
+  'bg-coollabs-50',
+  'text-coollabs-200',
+  'dark:border-warning/50',
+  'dark:bg-warning/15',
+  'dark:text-warning',
+];
 const INACTIVE = [
-  'border-coolgray-300',
-  'bg-base',
-  'text-neutral-400',
-  'hover:border-warning/40',
-  'hover:text-warning',
+  'border-neutral-200',
+  'bg-white',
+  'text-neutral-500',
+  'hover:border-coollabs/40',
+  'hover:text-coollabs',
+  'dark:border-coolgray-300',
+  'dark:bg-base',
+  'dark:text-neutral-400',
+  'dark:hover:border-warning/40',
+  'dark:hover:text-warning',
 ];
 
 function applyStyle(btn: HTMLButtonElement): void {
@@ -123,17 +135,17 @@ function buildIdeaCard(idea: CreatedIdea): HTMLElement {
 
   const article = document.createElement('article');
   article.className =
-    'idea-card group relative flex gap-3 rounded-sm border border-coolgray-300 bg-coolgray-100 p-3 shadow-sm transition-colors hover:border-coolgray-400';
+    'idea-card coolbox group flex-row gap-3 p-3';
   article.dataset.id = idea.id;
 
   const upvotedClasses = idea.viewerHasUpvoted
-    ? 'border-warning/50 bg-warning/15 text-warning'
-    : 'border-coolgray-300 bg-base text-neutral-400 hover:border-warning/40 hover:text-warning';
+    ? 'border-coollabs bg-coollabs-50 text-coollabs-200 dark:border-warning/50 dark:bg-warning/15 dark:text-warning'
+    : 'border-neutral-200 bg-white text-neutral-500 hover:border-coollabs/40 hover:text-coollabs dark:border-coolgray-300 dark:bg-base dark:text-neutral-400 dark:hover:border-warning/40 dark:hover:text-warning';
 
   article.innerHTML = `
     <button
       type="button"
-      class="upvote shrink-0 w-12 h-14 rounded-sm border-2 flex flex-col items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${upvotedClasses}"
+      class="upvote relative z-10 shrink-0 w-12 h-14 rounded-sm border flex flex-col items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coollabs dark:focus-visible:ring-warning focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-base disabled:cursor-not-allowed disabled:opacity-50 ${upvotedClasses}"
       data-discussion-id="${escapeHtml(idea.id)}"
       data-upvoted="${idea.viewerHasUpvoted ? '1' : '0'}"
       aria-label="${idea.viewerHasUpvoted ? 'Remove upvote' : 'Upvote'}"
@@ -148,18 +160,18 @@ function buildIdeaCard(idea: CreatedIdea): HTMLElement {
         href="${escapeHtml(idea.url)}"
         target="_blank"
         rel="noopener"
-        class="block text-base font-bold leading-snug text-white hover:text-warning"
+        class="box-title block text-base font-bold leading-snug hover:text-coollabs focus-visible:outline-none focus-visible:text-coollabs dark:hover:text-warning dark:focus-visible:text-warning before:absolute before:inset-0 before:content-['']"
       >${escapeHtml(idea.title)}</a>
-      <p class="mt-1 line-clamp-2 text-xs text-neutral-500">${escapeHtml(excerpt)}</p>
-      <div class="mt-2 flex items-center gap-2 text-[11px] uppercase tracking-wide text-neutral-500">
+      <p class="box-description mt-1 line-clamp-2">${escapeHtml(excerpt)}</p>
+      <div class="mt-2 flex items-center gap-2 text-xs uppercase tracking-wide text-neutral-500">
         ${
           idea.author
-            ? `<img src="${escapeHtml(idea.author.avatarUrl)}" alt="" class="h-4 w-4 rounded-full border border-coolgray-300" /><span class="font-medium normal-case">${escapeHtml(idea.author.login)}</span><span aria-hidden="true">·</span>`
+            ? `<img src="${escapeHtml(idea.author.avatarUrl)}" alt="" class="h-4 w-4 rounded-full border border-neutral-200 dark:border-coolgray-300" /><span class="font-bold normal-case">${escapeHtml(idea.author.login)}</span><span aria-hidden="true">·</span>`
             : ''
         }
         <time datetime="${escapeHtml(idea.createdAt)}" class="font-mono normal-case">${escapeHtml(date)}</time>
         <span aria-hidden="true">·</span>
-        <a href="${escapeHtml(idea.url)}" target="_blank" rel="noopener" class="font-mono normal-case hover:text-warning">#${idea.number}</a>
+        <a href="${escapeHtml(idea.url)}" target="_blank" rel="noopener" class="relative z-10 font-mono normal-case hover:text-warning">#${idea.number}</a>
       </div>
     </div>
   `;

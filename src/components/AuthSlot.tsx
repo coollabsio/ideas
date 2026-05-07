@@ -80,7 +80,7 @@ export function AuthSlot(): React.ReactElement {
   }
 
   if (loading) {
-    return <div className="h-8 w-48 animate-pulse rounded-sm bg-coolgray-100" />;
+    return <div className="h-8 w-48 animate-pulse rounded-sm bg-neutral-100 dark:bg-coolgray-100" />;
   }
 
   return (
@@ -105,7 +105,7 @@ export function AuthSlot(): React.ReactElement {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <Avatar src={me.user.avatarUrl} alt={me.user.login} fallback={me.user.login} size={28} />
-              <span className="hidden text-sm font-medium text-white sm:inline">{me.user.login}</span>
+              <span className="hidden text-sm font-bold text-black dark:text-white sm:inline">{me.user.login}</span>
             </div>
             <Button
               variant="ghost"

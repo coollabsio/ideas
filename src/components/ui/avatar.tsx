@@ -13,7 +13,7 @@ export const Avatar = React.forwardRef<HTMLSpanElement, AvatarProps>(
     <span
       ref={ref}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-coolgray-300 bg-coolgray-200 text-xs font-bold text-neutral-300',
+        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-100 text-xs font-bold text-neutral-500 dark:border-coolgray-300 dark:bg-coolgray-200 dark:text-neutral-300',
         className
       )}
       style={{ width: size, height: size }}

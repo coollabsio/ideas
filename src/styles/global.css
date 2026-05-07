@@ -9,13 +9,22 @@
 
 @layer base {
   :root {
+    color-scheme: light;
+  }
+
+  .dark {
     color-scheme: dark;
   }
 
   html {
+    background-color: #f9fafb;
+    color: #525252;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html.dark {
     background-color: #101010;
     color: #a3a3a3;
-    -webkit-font-smoothing: antialiased;
   }
 
   body {
@@ -28,6 +37,14 @@
   ::before,
   ::backdrop,
   ::file-selector-button {
+    border-color: theme('colors.neutral.200');
+  }
+
+  .dark *,
+  .dark ::after,
+  .dark ::before,
+  .dark ::backdrop,
+  .dark ::file-selector-button {
     border-color: theme('colors.coolgray.200');
   }
 
@@ -35,9 +52,16 @@
   h2,
   h3,
   h4 {
-    color: #ffffff;
+    color: #000000;
     font-weight: 700;
     line-height: 1.2;
+  }
+
+  .dark h1,
+  .dark h2,
+  .dark h3,
+  .dark h4 {
+    color: #ffffff;
   }
 
   h1 {
@@ -61,25 +85,36 @@
 
 @layer components {
   .button {
-    @apply inline-flex h-8 items-center justify-center gap-2 rounded-sm border-2 border-coolgray-300 bg-coolgray-100 px-2 text-sm font-medium text-white outline-0 transition-colors hover:bg-coolgray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning focus-visible:ring-offset-2 focus-visible:ring-offset-base disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-neutral-600;
+    @apply inline-flex h-8 min-w-fit cursor-pointer items-center justify-center gap-2 rounded-sm border-2 border-neutral-200 bg-white px-2 text-sm text-black outline-0 transition-colors hover:bg-neutral-100 hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coollabs focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-neutral-300 disabled:hover:bg-transparent dark:border-coolgray-300 dark:bg-coolgray-100 dark:text-white dark:hover:bg-coolgray-200 dark:hover:text-white dark:focus-visible:ring-warning dark:focus-visible:ring-offset-base dark:disabled:text-neutral-600;
   }
 
   .button-highlighted {
-    @apply border-coollabs-100 bg-coollabs/20 text-white hover:bg-coollabs-100 hover:text-white;
+    @apply border-coollabs bg-coollabs-50 text-coollabs-200 hover:bg-coollabs hover:text-white dark:border-coollabs-100 dark:bg-coollabs/20 dark:text-white dark:hover:bg-coollabs-100 dark:hover:text-white;
   }
 
   .button-ghost {
-    @apply border-transparent bg-transparent hover:bg-coolgray-100;
+    @apply border-transparent bg-transparent text-neutral-700 hover:bg-neutral-100 hover:text-black dark:text-neutral-300 dark:hover:bg-coolgray-100 dark:hover:text-white;
   }
 
   .input {
-    @apply block w-full rounded-sm border-0 bg-coolgray-100 px-2 py-1.5 text-sm text-white placeholder:text-neutral-700 read-only:bg-coolgray-100/40 read-only:text-neutral-500 focus-visible:outline-none disabled:bg-coolgray-100/40 disabled:text-neutral-500;
+    @apply block w-full rounded-sm border-0 bg-white px-2 py-1.5 text-sm text-black placeholder:text-neutral-300 read-only:bg-neutral-200 read-only:text-neutral-500 focus-visible:outline-none disabled:bg-neutral-200 disabled:text-neutral-500 dark:bg-coolgray-100 dark:text-white dark:placeholder:text-neutral-700 dark:read-only:bg-coolgray-100/40 dark:read-only:text-neutral-500 dark:disabled:bg-coolgray-100/40 dark:disabled:text-neutral-500;
+    box-shadow:
+      inset 4px 0 0 transparent,
+      inset 0 0 0 2px theme('colors.neutral.200');
+  }
+  .dark .input {
     box-shadow:
       inset 4px 0 0 transparent,
       inset 0 0 0 2px theme('colors.coolgray.300');
   }
   .input:focus-visible,
   .input.input-dirty {
+    box-shadow:
+      inset 4px 0 0 theme('colors.coollabs.DEFAULT'),
+      inset 0 0 0 2px theme('colors.neutral.200');
+  }
+  .dark .input:focus-visible,
+  .dark .input.input-dirty {
     box-shadow:
       inset 4px 0 0 theme('colors.warning.DEFAULT'),
       inset 0 0 0 2px theme('colors.coolgray.300');
@@ -88,32 +123,39 @@
   .input:read-only {
     box-shadow: none;
   }
+  .input[type='password'] {
+    @apply pr-[2.4rem];
+  }
   .textarea {
     @apply input font-mono;
   }
 
   .box {
-    @apply group relative flex min-h-16 cursor-pointer flex-col rounded-sm border border-coolgray-300 bg-coolgray-100 p-2 text-white shadow-sm transition-colors hover:bg-coollabs-100 hover:no-underline lg:flex-row;
+    @apply relative flex min-h-[4rem] cursor-pointer flex-col rounded-sm border border-neutral-200 bg-white p-2 text-black shadow-sm transition-colors hover:bg-neutral-100 hover:text-black hover:no-underline dark:border-coolgray-300 dark:bg-coolgray-100 dark:text-white dark:shadow-none dark:hover:bg-coollabs-100 dark:hover:text-white lg:flex-row;
+  }
+
+  .coolbox {
+    @apply relative flex min-h-[4rem] cursor-pointer flex-col rounded-sm border border-neutral-200 bg-white p-2 text-black transition-all duration-150 hover:ring-2 hover:ring-coollabs dark:border-coolgray-400 dark:bg-coolgray-100 dark:text-white dark:hover:ring-warning lg:flex-row;
   }
 
   .box-title {
-    @apply text-white group-hover:text-white;
+    @apply text-black group-hover:text-black dark:text-white dark:group-hover:text-white;
   }
 
   .box-description {
-    @apply text-xs font-bold text-neutral-500 group-hover:text-white;
+    @apply text-xs font-bold text-neutral-500 group-hover:text-black dark:group-hover:text-white;
   }
 
   .box-static {
-    @apply relative flex min-h-16 flex-col rounded-sm border border-coolgray-300 bg-coolgray-100 p-2 text-white shadow-sm lg:flex-row;
+    @apply relative flex min-h-[4rem] flex-col rounded-sm border border-neutral-200 bg-white p-2 text-black shadow-sm dark:border-coolgray-300 dark:bg-coolgray-100 dark:text-white dark:shadow-none;
   }
 
   .text-helper {
-    @apply font-bold text-warning;
+    @apply font-bold text-coollabs dark:text-warning;
   }
 
   .badge {
-    @apply inline-block h-3 w-3 rounded-full border border-black leading-none;
+    @apply inline-block h-3 w-3 rounded-full border border-neutral-200 leading-none dark:border-black;
   }
   .badge-success {
     @apply badge bg-success;
@@ -124,10 +166,27 @@
   .badge-error {
     @apply badge bg-error;
   }
+
+  .callout {
+    @apply relative rounded-lg border p-4;
+  }
+  .callout-warning {
+    @apply border-warning-300 bg-warning-50 text-warning-700 dark:border-warning-800 dark:bg-warning-900/30 dark:text-warning-200;
+  }
+  .callout-danger {
+    @apply border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200;
+  }
+  .callout-info {
+    @apply border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200;
+  }
+  .callout-success {
+    @apply border-green-300 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-200;
+  }
 }
 
 @layer utilities {
-  .scrollbar {
+  .scrollbar,
+  body {
     scrollbar-width: thin;
     scrollbar-color: theme('colors.coollabs.100') theme('colors.coolgray.200');
   }
