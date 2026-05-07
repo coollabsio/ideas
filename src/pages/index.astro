@@ -1,6 +1,7 @@
 ---
 import IdeaCard from '~/components/IdeaCard.astro';
 import { AuthSlot } from '~/components/AuthSlot.tsx';
+import { config } from '~/lib/config';
 import { listIdeas, type Idea } from '~/lib/github';
 import '~/styles/global.css';
 
@@ -24,6 +25,7 @@ if (!buildToken) {
 const openIdeas = ideas.filter((i) => !i.closed);
 const closedIdeas = ideas.filter((i) => i.closed);
 const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
+const githubLoginEnabled = config.githubLoginEnabled;
 ---
 <!doctype html>
 <html lang="en">
@@ -68,6 +70,9 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
     <script defer data-domain="ideas.coollabs.io" src="https://analytics.coollabs.io/js/script.js" is:inline></script>
   </head>
   <body class="scrollbar min-h-screen bg-gray-50 text-neutral-600 antialiased dark:bg-base dark:text-neutral-400">
+    <script is:inline define:vars={{ githubLoginEnabled }}>
+      window.__githubLoginEnabled = githubLoginEnabled;
+    </script>
     <div class="mx-auto flex min-h-screen max-w-3xl flex-col">
       <header class="flex items-center justify-between border-b border-neutral-200 px-4 py-4 dark:border-coolgray-200 sm:px-6 lg:px-8">
         <a href="/" class="flex items-center gap-2">
@@ -76,7 +81,7 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
             Coollabs <span class="text-coollabs dark:text-warning">/</span> Ideas
           </span>
         </a>
-        <AuthSlot client:load />
+        <AuthSlot githubLoginEnabled={githubLoginEnabled} client:load />
       </header>
 
       <main class="flex-1 p-4 sm:px-6 lg:px-8 lg:py-6">
@@ -89,7 +94,7 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
               href="https://github.com/coollabsio/ideas/discussions"
               target="_blank"
               rel="noopener">GitHub Discussions</a
-            >. Sign in with GitHub to upvote.
+            >. {githubLoginEnabled ? 'Sign in with GitHub to upvote.' : 'GitHub sign-in is temporarily disabled.'}
           </p>
           <dl class="mt-4 flex flex-wrap gap-2 sm:max-w-sm">
             <div class="box-static min-w-[9rem] flex-1 flex-col items-start justify-center px-3 py-2">

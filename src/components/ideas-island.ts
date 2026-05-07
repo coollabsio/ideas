@@ -51,6 +51,14 @@ function applyStyle(btn: HTMLButtonElement): void {
   }
 }
 
+function githubLoginEnabled(): boolean {
+  return window.__githubLoginEnabled !== false;
+}
+
+function notifyLoginDisabled(): void {
+  window.alert('GitHub sign-in is temporarily disabled.');
+}
+
 async function refreshIdeas(): Promise<void> {
   try {
     const res = await fetch('/api/discussions', { credentials: 'same-origin' });
@@ -76,6 +84,10 @@ async function handleUpvote(e: Event): Promise<void> {
   const user = window.__ideasUser ?? null;
   const csrfToken = window.__ideasCsrfToken ?? null;
   if (!user) {
+    if (!githubLoginEnabled()) {
+      notifyLoginDisabled();
+      return;
+    }
     location.href = '/api/auth/login';
     return;
   }

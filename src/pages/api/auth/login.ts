@@ -5,6 +5,10 @@ import { createOAuthState } from '~/lib/session';
 export const prerender = false;
 
 export const GET: APIRoute = ({ redirect }) => {
+  if (!config.githubLoginEnabled) {
+    return new Response('GitHub login is temporarily disabled.', { status: 503 });
+  }
+
   const state = createOAuthState();
   const url = new URL('https://github.com/login/oauth/authorize');
   url.searchParams.set('client_id', config.githubClientId);

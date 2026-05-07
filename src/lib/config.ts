@@ -16,6 +16,9 @@ export const config = {
   get githubToken() {
     return need('GITHUB_TOKEN');
   },
+  get githubLoginEnabled() {
+    return process.env.GITHUB_LOGIN_ENABLED !== 'false';
+  },
   get baseUrl() {
     return process.env.PUBLIC_BASE_URL ?? 'http://localhost:4321';
   },
