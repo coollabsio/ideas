@@ -146,6 +146,20 @@ async function gql<T>(
 }
 
 let cachedCategoryId: string | null = null;
+let cachedRepoId: string | null = null;
+
+export async function getRepositoryId(token: string): Promise<string> {
+  if (cachedRepoId) return cachedRepoId;
+  const data = await gql<{ repository: { id: string } }>(
+    `query($owner: String!, $name: String!) {
+      repository(owner: $owner, name: $name) { id }
+    }`,
+    { owner: config.repo.owner, name: config.repo.name },
+    token
+  );
+  cachedRepoId = data.repository.id;
+  return cachedRepoId;
+}
 
 export async function getIdeasCategoryId(token: string): Promise<string> {
   if (cachedCategoryId) return cachedCategoryId;
@@ -213,6 +227,36 @@ export async function toggleUpvote(
     token
   );
   return data[op].subject;
+}
+
+export async function createDiscussion(
+  title: string,
+  body: string,
+  token: string
+): Promise<Idea> {
+  const [repositoryId, categoryId] = await Promise.all([
+    getRepositoryId(token),
+    getIdeasCategoryId(token),
+  ]);
+  const data = await gql<{
+    createDiscussion: { discussion: Omit<Idea, 'category'> };
+  }>(
+    `mutation($repo: ID!, $cat: ID!, $title: String!, $body: String!) {
+      createDiscussion(input: {repositoryId: $repo, categoryId: $cat, title: $title, body: $body}) {
+        discussion {
+          id number title bodyText url upvoteCount viewerHasUpvoted
+          author { login avatarUrl }
+          createdAt
+        }
+      }
+    }`,
+    { repo: repositoryId, cat: categoryId, title, body },
+    token
+  );
+  return {
+    ...data.createDiscussion.discussion,
+    category: { name: config.ideasCategory },
+  };
 }
 
 export async function fetchViewer(

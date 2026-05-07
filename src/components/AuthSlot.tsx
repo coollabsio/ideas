@@ -1,8 +1,9 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { LogOut } from 'lucide-react';
+import { LogOut, Plus } from 'lucide-react';
 import { Button } from './ui/button';
 import { Avatar } from './ui/avatar';
+import { NewIdeaDialog } from './NewIdeaDialog';
 
 function GithubMark(props: React.SVGProps<SVGSVGElement>): React.ReactElement {
   return (
@@ -33,6 +34,7 @@ declare global {
 export function AuthSlot(): React.ReactElement {
   const [me, setMe] = useState<MeResponse>({ user: null });
   const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   async function load(): Promise<void> {
     try {
@@ -69,39 +71,61 @@ export function AuthSlot(): React.ReactElement {
     window.dispatchEvent(new CustomEvent('auth:ready'));
   }
 
-  if (loading) {
-    return <div className="h-8 w-32 animate-pulse rounded-sm bg-coolgray-100" />;
+  function handleNewIdeaClick(): void {
+    if (!me.user) {
+      window.location.href = '/api/auth/login';
+      return;
+    }
+    setDialogOpen(true);
   }
 
-  if (!me.user) {
-    return (
-      <a
-        href="/api/auth/login"
-        className="inline-flex h-8 items-center justify-center gap-2 rounded-sm border-2 border-coolgray-300 bg-coolgray-100 px-2 text-sm font-medium text-white outline-0 transition-colors hover:bg-coolgray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning focus-visible:ring-offset-2 focus-visible:ring-offset-base"
-      >
-        <GithubMark className="h-4 w-4" />
-        <span>Sign in</span>
-      </a>
-    );
+  if (loading) {
+    return <div className="h-8 w-48 animate-pulse rounded-sm bg-coolgray-100" />;
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2">
-        <Avatar src={me.user.avatarUrl} alt={me.user.login} fallback={me.user.login} size={28} />
-        <span className="text-sm font-medium text-white">{me.user.login}</span>
+    <>
+      <div className="flex items-center gap-2 sm:gap-3">
+        <Button
+          variant="highlighted"
+          size="sm"
+          onClick={handleNewIdeaClick}
+          aria-label="New idea"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>New idea</span>
+        </Button>
+
+        {!me.user ? (
+          <a
+            href="/api/auth/login"
+            className="inline-flex h-8 items-center justify-center gap-2 rounded-sm border-2 border-coolgray-300 bg-coolgray-100 px-2 text-sm font-medium text-white outline-0 transition-colors hover:bg-coolgray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+          >
+            <GithubMark className="h-4 w-4" />
+            <span>Sign in</span>
+          </a>
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Avatar src={me.user.avatarUrl} alt={me.user.login} fallback={me.user.login} size={28} />
+              <span className="hidden text-sm font-medium text-white sm:inline">{me.user.login}</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                void logout();
+              }}
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        )}
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => {
-          void logout();
-        }}
-        aria-label="Sign out"
-        title="Sign out"
-      >
-        <LogOut className="h-4 w-4" aria-hidden="true" />
-      </Button>
-    </div>
+
+      <NewIdeaDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+    </>
   );
 }

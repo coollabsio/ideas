@@ -77,11 +77,11 @@ const totalUpvotes = ideas.reduce((acc, i) => acc + i.upvoteCount, 0);
           <dl class="mt-4 grid grid-cols-2 gap-2 sm:max-w-sm">
             <div class="box-static flex-col items-start justify-center px-3 py-2">
               <dt class="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Ideas</dt>
-              <dd class="font-mono text-lg font-bold text-white">{ideas.length}</dd>
+              <dd data-stat="ideas" class="font-mono text-lg font-bold text-white">{ideas.length}</dd>
             </div>
             <div class="box-static flex-col items-start justify-center px-3 py-2">
               <dt class="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Upvotes</dt>
-              <dd class="font-mono text-lg font-bold text-white">{totalUpvotes}</dd>
+              <dd data-stat="upvotes" class="font-mono text-lg font-bold text-white">{totalUpvotes}</dd>
             </div>
           </dl>
         </section>

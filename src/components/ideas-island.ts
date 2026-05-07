@@ -4,6 +4,18 @@ interface IdeaSummary {
   viewerHasUpvoted: boolean;
 }
 
+interface CreatedIdea {
+  id: string;
+  number: number;
+  title: string;
+  bodyText: string;
+  url: string;
+  upvoteCount: number;
+  viewerHasUpvoted: boolean;
+  author: { login: string; avatarUrl: string } | null;
+  createdAt: string;
+}
+
 const ACTIVE = ['border-warning/50', 'bg-warning/15', 'text-warning'];
 const INACTIVE = [
   'border-coolgray-300',
@@ -83,16 +95,104 @@ async function handleUpvote(e: Event): Promise<void> {
   }
 }
 
-function init(): void {
-  document.querySelectorAll<HTMLButtonElement>('button.upvote').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      void handleUpvote(e);
-    });
-    applyStyle(btn);
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function attachUpvoteHandler(btn: HTMLButtonElement): void {
+  btn.addEventListener('click', (e) => {
+    void handleUpvote(e);
   });
+  applyStyle(btn);
+}
+
+function buildIdeaCard(idea: CreatedIdea): HTMLElement {
+  const excerpt =
+    idea.bodyText.length > 240 ? idea.bodyText.slice(0, 240).trimEnd() + '…' : idea.bodyText;
+  const date = new Date(idea.createdAt).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  const article = document.createElement('article');
+  article.className =
+    'idea-card group relative flex gap-3 rounded-sm border border-coolgray-300 bg-coolgray-100 p-3 shadow-sm transition-colors hover:border-coolgray-400';
+  article.dataset.id = idea.id;
+
+  const upvotedClasses = idea.viewerHasUpvoted
+    ? 'border-warning/50 bg-warning/15 text-warning'
+    : 'border-coolgray-300 bg-base text-neutral-400 hover:border-warning/40 hover:text-warning';
+
+  article.innerHTML = `
+    <button
+      type="button"
+      class="upvote shrink-0 w-12 h-14 rounded-sm border-2 flex flex-col items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${upvotedClasses}"
+      data-discussion-id="${escapeHtml(idea.id)}"
+      data-upvoted="${idea.viewerHasUpvoted ? '1' : '0'}"
+      aria-label="${idea.viewerHasUpvoted ? 'Remove upvote' : 'Upvote'}"
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5l-7 7M12 5l7 7M12 5v14"/>
+      </svg>
+      <span class="count mt-1 font-mono text-sm font-bold leading-none">${idea.upvoteCount}</span>
+    </button>
+    <div class="min-w-0 flex-1">
+      <a
+        href="${escapeHtml(idea.url)}"
+        target="_blank"
+        rel="noopener"
+        class="block text-base font-bold leading-snug text-white hover:text-warning"
+      >${escapeHtml(idea.title)}</a>
+      <p class="mt-1 line-clamp-2 text-xs text-neutral-500">${escapeHtml(excerpt)}</p>
+      <div class="mt-2 flex items-center gap-2 text-[11px] uppercase tracking-wide text-neutral-500">
+        ${
+          idea.author
+            ? `<img src="${escapeHtml(idea.author.avatarUrl)}" alt="" class="h-4 w-4 rounded-full border border-coolgray-300" /><span class="font-medium normal-case">${escapeHtml(idea.author.login)}</span><span aria-hidden="true">·</span>`
+            : ''
+        }
+        <time datetime="${escapeHtml(idea.createdAt)}" class="font-mono normal-case">${escapeHtml(date)}</time>
+        <span aria-hidden="true">·</span>
+        <a href="${escapeHtml(idea.url)}" target="_blank" rel="noopener" class="font-mono normal-case hover:text-warning">#${idea.number}</a>
+      </div>
+    </div>
+  `;
+  return article;
+}
+
+function bumpIdeasStat(): void {
+  const el = document.querySelector<HTMLElement>('[data-stat="ideas"]');
+  if (!el) return;
+  const n = Number.parseInt(el.textContent ?? '0', 10);
+  if (Number.isFinite(n)) el.textContent = String(n + 1);
+}
+
+function handleIdeaCreated(e: Event): void {
+  const idea = (e as CustomEvent<CreatedIdea>).detail;
+  if (!idea) return;
+  const list = document.getElementById('ideas-list');
+  if (!list) return;
+  const existing = list.querySelector<HTMLElement>(`[data-id="${CSS.escape(idea.id)}"]`);
+  if (existing) return;
+  const card = buildIdeaCard(idea);
+  list.prepend(card);
+  const btn = card.querySelector<HTMLButtonElement>('button.upvote');
+  if (btn) attachUpvoteHandler(btn);
+  bumpIdeasStat();
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function init(): void {
+  document.querySelectorAll<HTMLButtonElement>('button.upvote').forEach(attachUpvoteHandler);
   window.addEventListener('auth:ready', () => {
     void refreshIdeas();
   });
+  window.addEventListener('idea:created', handleIdeaCreated);
   void refreshIdeas();
 }
 
