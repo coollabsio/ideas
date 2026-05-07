@@ -26,6 +26,7 @@ A small Astro + React app that:
 
 - Lists ideas from the **Ideas** category of `coollabsio/ideas` GitHub Discussions.
 - Supports **GitHub OAuth** login.
+- Can temporarily disable OAuth login with `GITHUB_LOGIN_ENABLED=false` while keeping public browsing active.
 - Lets signed-in users **upvote** — votes go straight to GitHub via the GraphQL `addUpvote` mutation. No middle layer.
 - Renders the list at **build time** for instant first paint, then refreshes counts on the client.
 - Uses **SQLite** only for OAuth session storage (no copy of ideas or votes).
@@ -67,6 +68,7 @@ GitHub is the single source of truth for ideas and votes. The app never stores e
 2. Create a fine-grained PAT scoped to `coollabsio/ideas` with `Discussions: read`
    (or a classic PAT with `public_repo`). This is used for build-time prerender + the anonymous `/api/discussions` cold path.
 3. Copy `.env.example` to `.env` and fill in `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_TOKEN`.
+   - Set `GITHUB_LOGIN_ENABLED=false` if you need to temporarily disable sign-in and new authenticated actions.
 4. Install and run (requires [Bun](https://bun.com) ≥ 1.3):
 
 ```bash
@@ -105,6 +107,7 @@ The container exposes a `HEALTHCHECK` against `GET /api/health` (Coolify-compati
 |---|---|---|---|
 | `GITHUB_CLIENT_ID` | yes | runtime | OAuth App client ID |
 | `GITHUB_CLIENT_SECRET` | yes | runtime | OAuth App client secret |
+| `GITHUB_LOGIN_ENABLED` | no | build + runtime | Defaults to `true`. Set to `false` to hide sign-in/new-idea UI and make `/api/auth/login` return 503. Anonymous idea listing still works. |
 | `GITHUB_TOKEN` | yes | build + runtime | PAT with `Discussions: read` on `coollabsio/ideas`. Used for prerender + anon `/api/discussions`. |
 | `PUBLIC_BASE_URL` | yes | runtime | Public origin; must match the OAuth callback URL |
 | `DB_PATH` | no | runtime | Defaults to `./data/sessions.db` |

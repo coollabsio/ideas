@@ -27,11 +27,21 @@ declare global {
   interface Window {
     __ideasCsrfToken: string | null;
     __ideasUser: MeResponse['user'];
+    __githubLoginEnabled?: boolean;
     __dispatchAuthReady?: () => void;
   }
 }
 
-export function AuthSlot(): React.ReactElement {
+function browserGithubLoginEnabled(fallback: boolean): boolean {
+  if (typeof window === 'undefined') return fallback;
+  return window.__githubLoginEnabled !== false;
+}
+
+interface AuthSlotProps {
+  githubLoginEnabled?: boolean;
+}
+
+export function AuthSlot({ githubLoginEnabled = true }: AuthSlotProps): React.ReactElement {
   const [me, setMe] = useState<MeResponse>({ user: null });
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -72,6 +82,7 @@ export function AuthSlot(): React.ReactElement {
   }
 
   function handleNewIdeaClick(): void {
+    if (!browserGithubLoginEnabled(githubLoginEnabled)) return;
     if (!me.user) {
       window.location.href = '/api/auth/login';
       return;
@@ -79,28 +90,35 @@ export function AuthSlot(): React.ReactElement {
     setDialogOpen(true);
   }
 
+  const loginEnabled = browserGithubLoginEnabled(githubLoginEnabled);
+
   if (loading) {
+    if (!loginEnabled) return <></>;
     return <div className="h-8 w-48 animate-pulse rounded-sm bg-neutral-100 dark:bg-coolgray-100" />;
   }
 
   return (
     <>
       <div className="flex items-center gap-2 sm:gap-3">
-        <Button
-          variant="highlighted"
-          size="sm"
-          onClick={handleNewIdeaClick}
-          aria-label="New idea"
-        >
-          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>New idea</span>
-        </Button>
+        {loginEnabled && (
+          <Button
+            variant="highlighted"
+            size="sm"
+            onClick={handleNewIdeaClick}
+            aria-label="New idea"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>New idea</span>
+          </Button>
+        )}
 
         {!me.user ? (
-          <a href="/api/auth/login" className="button">
-            <GithubMark className="h-4 w-4" />
-            <span>Sign in</span>
-          </a>
+          loginEnabled ? (
+            <a href="/api/auth/login" className="button">
+              <GithubMark className="h-4 w-4" />
+              <span>Sign in</span>
+            </a>
+          ) : null
         ) : (
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
