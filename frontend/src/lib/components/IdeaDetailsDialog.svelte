@@ -1,5 +1,6 @@
 <script lang="ts">
   import { deleteIdea, setIdeaStatus, updateIdea, type Idea, type IdeaStatus } from '$lib/api';
+  import CommentSection from '$lib/components/CommentSection.svelte';
 
   export let idea: Idea | null = null;
   export let csrfToken: string | null = null;
@@ -84,6 +85,11 @@
       busy = false;
     }
   }
+
+  function updateCommentCount(delta: number) {
+    if (!idea) return;
+    onUpdated({ ...idea, commentCount: Math.max(0, idea.commentCount + delta) });
+  }
 </script>
 
 {#if idea}
@@ -165,5 +171,7 @@
         {/if}
       </div>
     {/if}
+
+    <CommentSection ideaId={idea.id} {csrfToken} onCommentCountChange={updateCommentCount} />
   </div>
 {/if}

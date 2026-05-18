@@ -27,6 +27,7 @@
   $: inProgressIdeas = ideas.filter((idea) => idea.status === 'inprogress');
   $: openIdeas = ideas.filter((idea) => idea.status === 'open');
   $: closedIdeas = ideas.filter((idea) => idea.status === 'closed');
+  $: similarIdeaCandidates = [...inProgressIdeas, ...openIdeas];
   $: totalUpvotes = ideas.reduce((sum, idea) => sum + idea.upvoteCount, 0);
   $: if (selectedIdea) {
     const refreshed = ideas.find((idea) => idea.id === selectedIdea?.id);
@@ -83,6 +84,11 @@
   function deleteLocalIdea(idea: Idea) {
     setIdeas((current) => current.filter((item) => item.id !== idea.id));
     if (selectedIdea?.id === idea.id) selectedIdea = null;
+  }
+
+  function handleSelectSimilar(idea: Idea) {
+    dialogOpen = false;
+    selectedIdea = idea;
   }
 
   async function signOut() {
@@ -177,9 +183,9 @@
   </main>
 
   <footer class="footer">
-    <span>Built with <strong>Rust</strong> · Powered by <a href="https://coolify.io?ref=coollabsideas">Coolify</a></span>
+    <span>Powered by <a href="https://coolify.io?ref=coollabsideas">Coolify</a></span>
   </footer>
 </div>
 
-<NewIdeaDialog open={dialogOpen} csrfToken={me.csrfToken ?? null} onClose={() => (dialogOpen = false)} onCreated={ideaCreated} />
+<NewIdeaDialog open={dialogOpen} csrfToken={me.csrfToken ?? null} ideas={similarIdeaCandidates} onClose={() => (dialogOpen = false)} onCreated={ideaCreated} onSelectSimilar={handleSelectSimilar} />
 <IdeaDetailsDialog idea={selectedIdea} csrfToken={me.csrfToken ?? null} onClose={() => (selectedIdea = null)} onUpdated={replaceIdea} onDeleted={deleteLocalIdea} />

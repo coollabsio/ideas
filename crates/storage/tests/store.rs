@@ -1,10 +1,38 @@
 use ideas_domain::IdeaStatus;
 use ideas_storage::Store;
+use sqlx::migrate::{Migration, MigrationType, Migrator};
+use std::borrow::Cow;
 use uuid::Uuid;
 
 const INIT_UP_SQL: &str = include_str!("../migrations/20260507120000_init.up.sql");
 const ADD_INPROGRESS_STATUS_UP_SQL: &str =
     include_str!("../migrations/20260518120000_add_inprogress_status.up.sql");
+
+const ORIGINAL_ADD_INPROGRESS_STATUS_UP_SQL: &str = r#"-- no-transaction
+PRAGMA foreign_keys = OFF;
+
+CREATE TABLE ideas_new (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL CHECK(length(title) BETWEEN 10 AND 300),
+  body TEXT NOT NULL CHECK(length(body) BETWEEN 30 AND 10000),
+  author_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'inprogress', 'closed')),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+INSERT INTO ideas_new (id, title, body, author_user_id, status, created_at, updated_at)
+SELECT id, title, body, author_user_id, status, created_at, updated_at
+FROM ideas;
+
+DROP TABLE ideas;
+ALTER TABLE ideas_new RENAME TO ideas;
+
+CREATE INDEX idx_ideas_status_created ON ideas(status, created_at DESC);
+CREATE INDEX idx_ideas_author ON ideas(author_user_id);
+
+PRAGMA foreign_keys = ON;
+"#;
 
 async fn test_store() -> Store {
     let path = std::env::temp_dir().join(format!("ideas-test-{}.db", Uuid::new_v4()));
@@ -67,6 +95,79 @@ async fn status_migration_preserves_upvotes_when_drop_cascades() {
         .await
         .expect("upvote row count");
     assert_eq!(upvote_rows, 1);
+}
+
+#[tokio::test]
+async fn migrate_skips_applied_migration_with_checksum_mismatch_and_applies_pending() {
+    let path = std::env::temp_dir().join(format!("ideas-checksum-test-{}.db", Uuid::new_v4()));
+    let store = Store::connect(path.to_str().expect("utf8 temp path"))
+        .await
+        .expect("connect");
+    let old_migrator = Migrator {
+        migrations: Cow::Owned(vec![
+            Migration::new(
+                20260507120000,
+                Cow::Borrowed("init"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(INIT_UP_SQL),
+                INIT_UP_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260518120000,
+                Cow::Borrowed("add_inprogress_status"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(ORIGINAL_ADD_INPROGRESS_STATUS_UP_SQL),
+                ORIGINAL_ADD_INPROGRESS_STATUS_UP_SQL.starts_with("-- no-transaction"),
+            ),
+        ]),
+        ..Migrator::DEFAULT
+    };
+    old_migrator
+        .run(store.pool())
+        .await
+        .expect("old migrations apply");
+
+    store.migrate().await.expect("checksum mismatch is skipped");
+
+    let comments_table: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'comments'",
+    )
+    .fetch_optional(store.pool())
+    .await
+    .expect("comments table lookup");
+    assert_eq!(comments_table.as_deref(), Some("comments"));
+}
+
+#[tokio::test]
+async fn migrate_still_fails_on_dirty_migration() {
+    let path = std::env::temp_dir().join(format!("ideas-dirty-test-{}.db", Uuid::new_v4()));
+    let store = Store::connect(path.to_str().expect("utf8 temp path"))
+        .await
+        .expect("connect");
+
+    sqlx::raw_sql(
+        r#"
+        CREATE TABLE _sqlx_migrations (
+            version BIGINT PRIMARY KEY,
+            description TEXT NOT NULL,
+            installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            success BOOLEAN NOT NULL,
+            checksum BLOB NOT NULL,
+            execution_time BIGINT NOT NULL
+        );
+        INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time)
+        VALUES (20260518129999, 'dirty', FALSE, X'00', 0);
+        "#,
+    )
+    .execute(store.pool())
+    .await
+    .expect("dirty migration row");
+
+    let err = store.migrate().await.expect_err("dirty migration fails");
+    assert!(
+        err.to_string().contains("partially applied"),
+        "unexpected error: {err:#}"
+    );
 }
 
 #[tokio::test]

@@ -45,6 +45,8 @@
       <strong>{idea.author.login}</strong>
       <span aria-hidden="true">·</span>
       <time datetime={idea.createdAt}>{date}</time>
+      <span aria-hidden="true">·</span>
+      <span>{idea.commentCount} {idea.commentCount === 1 ? 'comment' : 'comments'}</span>
       {#if !canVote}<span aria-hidden="true">·</span><span>Sign in to vote</span>{/if}
     </footer>
   </div>

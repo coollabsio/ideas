@@ -10,6 +10,7 @@ export interface Idea {
   title: string;
   bodyText: string;
   upvoteCount: number;
+  commentCount: number;
   viewerHasUpvoted: boolean;
   viewerCanEdit: boolean;
   viewerCanDelete: boolean;
@@ -26,6 +27,17 @@ export interface MeResponse {
   csrfToken?: string | null;
 }
 
+export interface Comment {
+  id: string;
+  ideaId: string;
+  bodyText: string;
+  viewerCanEdit: boolean;
+  viewerCanDelete: boolean;
+  author: User;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const meKeys = {
   all: ['me'] as const,
   current: () => [...meKeys.all, 'current'] as const
@@ -34,6 +46,11 @@ export const meKeys = {
 export const ideaKeys = {
   all: ['ideas'] as const,
   lists: () => [...ideaKeys.all, 'list'] as const
+};
+
+export const commentKeys = {
+  all: ['comments'] as const,
+  list: (ideaId: string) => [...commentKeys.all, 'list', ideaId] as const
 };
 
 export function meQueryOptions() {
@@ -99,6 +116,46 @@ export async function setIdeaStatus(id: string, status: IdeaStatus, csrfToken: s
 
 export async function deleteIdea(id: string, csrfToken: string): Promise<void> {
   const res = await fetch(`/api/ideas/${id}`, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+    headers: { 'x-csrf-token': csrfToken }
+  });
+  if (res.status === 401) window.location.href = '/api/auth/login';
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function fetchComments(ideaId: string): Promise<Comment[]> {
+  const res = await fetch(`/api/ideas/${ideaId}/comments`, { credentials: 'same-origin', cache: 'no-store' });
+  if (!res.ok) throw new Error(`Could not load comments: HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createComment(ideaId: string, body: string, csrfToken: string): Promise<Comment> {
+  const res = await fetch(`/api/ideas/${ideaId}/comments`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+    body: JSON.stringify({ body })
+  });
+  if (res.status === 401) window.location.href = '/api/auth/login';
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function updateComment(id: string, body: string, csrfToken: string): Promise<Comment> {
+  const res = await fetch(`/api/comments/${id}`, {
+    method: 'PATCH',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+    body: JSON.stringify({ body })
+  });
+  if (res.status === 401) window.location.href = '/api/auth/login';
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function deleteComment(id: string, csrfToken: string): Promise<void> {
+  const res = await fetch(`/api/comments/${id}`, {
     method: 'DELETE',
     credentials: 'same-origin',
     headers: { 'x-csrf-token': csrfToken }

@@ -31,10 +31,14 @@ const BODY_MIN: usize = 30;
 const BODY_MAX: usize = 10_000;
 const AUTH_LOGIN_LIMIT: u32 = 10;
 const AUTH_LOGIN_WINDOW: Duration = Duration::from_secs(60);
-const CREATE_IDEA_LIMIT: u32 = 20;
+const CREATE_IDEA_LIMIT: u32 = 5;
 const CREATE_IDEA_WINDOW: Duration = Duration::from_secs(60 * 60);
 const UPVOTE_LIMIT: u32 = 120;
 const UPVOTE_WINDOW: Duration = Duration::from_secs(60);
+const COMMENT_LIMIT: u32 = 5;
+const COMMENT_WINDOW: Duration = Duration::from_secs(60 * 5);
+const COMMENT_MIN: usize = 1;
+const COMMENT_MAX: usize = 2_000;
 const CONTENT_SECURITY_POLICY: &str = concat!(
     "default-src 'self'; ",
     "base-uri 'self'; ",
@@ -267,6 +271,14 @@ fn router(state: AppState) -> Router {
         .route("/api/ideas/:id", patch(update_idea).delete(delete_idea))
         .route("/api/ideas/:id/status", patch(set_idea_status))
         .route("/api/ideas/:id/upvote", post(set_upvote))
+        .route(
+            "/api/ideas/:id/comments",
+            get(list_comments).post(create_comment),
+        )
+        .route(
+            "/api/comments/:id",
+            patch(update_comment).delete(delete_comment),
+        )
         .layer(RequestBodyLimitLayer::new(64 * 1024))
         .layer(TraceLayer::new_for_http())
         .fallback(static_handler);
@@ -752,6 +764,134 @@ async fn set_upvote(
     }
 }
 
+#[derive(Deserialize)]
+struct CommentBody {
+    body: String,
+}
+
+async fn list_comments(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let session = get_session(&state, &jar).await;
+    let viewer = session.as_ref().map(|s| s.user_id);
+    let viewer_is_moderator = session
+        .as_ref()
+        .is_some_and(|s| state.config.is_moderator(&s.user.login));
+    match state
+        .store
+        .list_comments(id, viewer, viewer_is_moderator)
+        .await
+    {
+        Ok(comments) => Json(comments).into_response(),
+        Err(ideas_storage::StorageError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
+        Err(err) => {
+            tracing::error!(?err, "failed to list comments");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn create_comment(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<CommentBody>,
+) -> impl IntoResponse {
+    let Some(session) = require_session(&state, &jar).await else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let key = rate_limit_key(&headers, &jar, Some(session.user_id));
+    if !state
+        .rate_limiter
+        .allow("comment", &key, COMMENT_LIMIT, COMMENT_WINDOW)
+    {
+        return (StatusCode::TOO_MANY_REQUESTS, "Too many comments").into_response();
+    }
+    if !csrf_ok(&headers, &session.csrf_token) {
+        return (StatusCode::FORBIDDEN, "Bad CSRF token").into_response();
+    }
+    if let Err(msg) = validate_comment(&payload.body) {
+        return (StatusCode::BAD_REQUEST, msg).into_response();
+    }
+    let actor_is_moderator = state.config.is_moderator(&session.user.login);
+    match state
+        .store
+        .create_comment(id, payload.body.trim(), session.user_id, actor_is_moderator)
+        .await
+    {
+        Ok(comment) => (StatusCode::CREATED, Json(comment)).into_response(),
+        Err(ideas_storage::StorageError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
+        Err(err) => {
+            tracing::error!(?err, "failed to create comment");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn update_comment(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<CommentBody>,
+) -> impl IntoResponse {
+    let Some(session) = require_session(&state, &jar).await else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if !csrf_ok(&headers, &session.csrf_token) {
+        return (StatusCode::FORBIDDEN, "Bad CSRF token").into_response();
+    }
+    if let Err(msg) = validate_comment(&payload.body) {
+        return (StatusCode::BAD_REQUEST, msg).into_response();
+    }
+    let actor_is_moderator = state.config.is_moderator(&session.user.login);
+    match state
+        .store
+        .update_comment(id, payload.body.trim(), session.user_id, actor_is_moderator)
+        .await
+    {
+        Ok(comment) => Json(comment).into_response(),
+        Err(ideas_storage::StorageError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
+        Err(err) => {
+            tracing::error!(?err, "failed to update comment");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn delete_comment(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let Some(session) = require_session(&state, &jar).await else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if !csrf_ok(&headers, &session.csrf_token) {
+        return (StatusCode::FORBIDDEN, "Bad CSRF token").into_response();
+    }
+    match state
+        .store
+        .delete_comment(
+            id,
+            session.user_id,
+            state.config.is_moderator(&session.user.login),
+        )
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(ideas_storage::StorageError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
+        Err(err) => {
+            tracing::error!(?err, "failed to delete comment");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
 fn validate_idea(title: &str, body: &str) -> Result<(), String> {
     let title_len = title.trim().chars().count();
     let body_len = body.trim().chars().count();
@@ -760,6 +900,16 @@ fn validate_idea(title: &str, body: &str) -> Result<(), String> {
     }
     if !(BODY_MIN..=BODY_MAX).contains(&body_len) {
         return Err(format!("Body must be {BODY_MIN}–{BODY_MAX} characters"));
+    }
+    Ok(())
+}
+
+fn validate_comment(body: &str) -> Result<(), String> {
+    let body_len = body.trim().chars().count();
+    if !(COMMENT_MIN..=COMMENT_MAX).contains(&body_len) {
+        return Err(format!(
+            "Comment must be {COMMENT_MIN}–{COMMENT_MAX} characters"
+        ));
     }
     Ok(())
 }

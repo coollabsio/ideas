@@ -1,10 +1,13 @@
 <script lang="ts">
   import { createIdea, type Idea } from '$lib/api';
+  import { findSimilarIdeas, type SimilarIdeaMatch } from '$lib/similarity';
 
   export let open = false;
   export let csrfToken: string | null = null;
+  export let ideas: Idea[] = [];
   export let onClose: () => void;
   export let onCreated: (idea: Idea) => void;
+  export let onSelectSimilar: (idea: Idea) => void = () => {};
 
   let title = '';
   let body = '';
@@ -19,6 +22,7 @@
   $: titleLen = title.trim().length;
   $: bodyLen = body.trim().length;
   $: canSubmit = Boolean(csrfToken) && titleLen >= TITLE_MIN && titleLen <= TITLE_MAX && bodyLen >= BODY_MIN && bodyLen <= BODY_MAX && !submitting;
+  $: similarIdeas = findSimilarIdeas(title, body, ideas);
 
   function reset() {
     title = '';
@@ -29,6 +33,15 @@
   function close() {
     reset();
     onClose();
+  }
+
+  function selectSimilar(match: SimilarIdeaMatch) {
+    reset();
+    onSelectSimilar(match.idea);
+  }
+
+  function excerpt(idea: Idea) {
+    return idea.bodyText.length > 120 ? `${idea.bodyText.slice(0, 120).trimEnd()}…` : idea.bodyText;
   }
 
   async function submit() {
@@ -59,6 +72,24 @@
     </header>
 
     <form on:submit|preventDefault={submit}>
+      {#if similarIdeas.length > 0}
+        <section class="similar-ideas-callout" aria-labelledby="similar-ideas-title">
+          <div>
+            <strong id="similar-ideas-title">Are you looking for this?</strong>
+            <p>This idea looks similar to existing ideas. You may want to upvote or comment there instead.</p>
+          </div>
+          <div class="similar-ideas-list">
+            {#each similarIdeas as match (match.idea.id)}
+              <button class="similar-idea" type="button" on:click={() => selectSimilar(match)}>
+                <span class="similar-idea-title">{match.idea.title}</span>
+                <span class="similar-idea-excerpt">{excerpt(match.idea)}</span>
+                <span class="similar-idea-meta">{match.idea.status} · {match.idea.upvoteCount} upvotes</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
       <label>
         <span>Title <small>{titleLen}/{TITLE_MAX}</small></span>
         <input class="input" bind:value={title} maxlength={TITLE_MAX} required placeholder="A short, descriptive title" />

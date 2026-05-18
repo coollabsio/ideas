@@ -53,6 +53,7 @@ pub struct Idea {
     pub title: String,
     pub body_text: String,
     pub upvote_count: i64,
+    pub comment_count: i64,
     pub viewer_has_upvoted: bool,
     pub viewer_can_edit: bool,
     pub viewer_can_delete: bool,
@@ -62,6 +63,19 @@ pub struct Idea {
     pub updated_at: DateTime<Utc>,
     pub status: IdeaStatus,
     pub closed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub id: Uuid,
+    pub idea_id: Uuid,
+    pub body_text: String,
+    pub viewer_can_edit: bool,
+    pub viewer_can_delete: bool,
+    pub author: PublicUser,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

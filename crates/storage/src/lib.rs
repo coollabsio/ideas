@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
-use ideas_domain::{Idea, IdeaStatus, PublicUser, Session, User};
+use ideas_domain::{Comment, Idea, IdeaStatus, PublicUser, Session, User};
 use sqlx::{
-    migrate::{Migration, MigrationType, Migrator},
+    migrate::{Migrate, MigrateError, Migration, MigrationType, Migrator},
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     Row, SqlitePool,
 };
@@ -17,6 +17,9 @@ const ADD_INPROGRESS_STATUS_UP_SQL: &str =
     include_str!("../migrations/20260518120000_add_inprogress_status.up.sql");
 const ADD_INPROGRESS_STATUS_DOWN_SQL: &str =
     include_str!("../migrations/20260518120000_add_inprogress_status.down.sql");
+const ADD_COMMENTS_UP_SQL: &str = include_str!("../migrations/20260518130000_add_comments.up.sql");
+const ADD_COMMENTS_DOWN_SQL: &str =
+    include_str!("../migrations/20260518130000_add_comments.down.sql");
 
 fn embedded_migrator() -> Migrator {
     Migrator {
@@ -49,8 +52,103 @@ fn embedded_migrator() -> Migrator {
                 Cow::Borrowed(ADD_INPROGRESS_STATUS_DOWN_SQL),
                 ADD_INPROGRESS_STATUS_DOWN_SQL.starts_with("-- no-transaction"),
             ),
+            Migration::new(
+                20260518130000,
+                Cow::Borrowed("add_comments"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(ADD_COMMENTS_UP_SQL),
+                ADD_COMMENTS_UP_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260518130000,
+                Cow::Borrowed("add_comments"),
+                MigrationType::ReversibleDown,
+                Cow::Borrowed(ADD_COMMENTS_DOWN_SQL),
+                ADD_COMMENTS_DOWN_SQL.starts_with("-- no-transaction"),
+            ),
         ]),
         ..Migrator::DEFAULT
+    }
+}
+
+fn checksum_hex(checksum: &[u8]) -> String {
+    checksum.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+async fn run_lenient_migrations(pool: &SqlitePool) -> std::result::Result<(), MigrateError> {
+    let migrator = embedded_migrator();
+    let mut conn = pool.acquire().await?;
+    let conn = &mut *conn;
+
+    conn.lock().await?;
+    let result = async {
+        conn.ensure_migrations_table().await?;
+
+        if let Some(version) = conn.dirty_version().await? {
+            return Err(MigrateError::Dirty(version));
+        }
+
+        let applied_migrations = conn.list_applied_migrations().await?;
+        let up_migrations: HashMap<_, _> = migrator
+            .iter()
+            .filter(|migration| !migration.migration_type.is_down_migration())
+            .map(|migration| (migration.version, migration))
+            .collect();
+        let applied_versions: HashSet<_> = applied_migrations
+            .iter()
+            .map(|migration| migration.version)
+            .collect();
+
+        for applied_migration in &applied_migrations {
+            if !up_migrations.contains_key(&applied_migration.version) {
+                tracing::warn!(
+                    version = applied_migration.version,
+                    "applied migration is missing from embedded migrations; skipping"
+                );
+            }
+        }
+
+        for migration in migrator.iter() {
+            if migration.migration_type.is_down_migration() {
+                continue;
+            }
+
+            if let Some(applied_migration) = applied_migrations
+                .iter()
+                .find(|applied| applied.version == migration.version)
+            {
+                if migration.checksum != applied_migration.checksum {
+                    tracing::warn!(
+                        version = migration.version,
+                        description = %migration.description,
+                        stored_checksum = %checksum_hex(&applied_migration.checksum),
+                        embedded_checksum = %checksum_hex(&migration.checksum),
+                        "applied migration checksum differs from embedded migration; skipping already-applied migration"
+                    );
+                }
+                continue;
+            }
+
+            if applied_versions.iter().any(|version| *version > migration.version) {
+                tracing::warn!(
+                    version = migration.version,
+                    description = %migration.description,
+                    "migration is older than an already-applied migration but is missing; applying pending migration"
+                );
+            }
+
+            conn.apply(migration).await?;
+        }
+
+        Ok(())
+    }
+    .await;
+    let unlock_result = conn.unlock().await;
+
+    match (result, unlock_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(err), _) => Err(err),
+        (Ok(()), Err(err)) => Err(err),
     }
 }
 
@@ -194,7 +292,7 @@ impl Store {
     }
 
     pub async fn migrate(&self) -> anyhow::Result<()> {
-        embedded_migrator().run(&self.pool).await?;
+        run_lenient_migrations(&self.pool).await?;
         Ok(())
     }
 
@@ -435,10 +533,12 @@ impl Store {
     ) -> Result<Vec<Idea>> {
         let viewer = viewer_id.map(|id| id.to_string());
         let moderator = i64::from(viewer_is_moderator);
-        let rows = sqlx::query(
+        let comment_count_sql = self.comment_count_sql().await?;
+        let sql = format!(
             "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,
                     u.login, u.avatar_url,
                     COUNT(v.idea_id) AS upvote_count,
+                    {comment_count_sql} AS comment_count,
                     MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted,
                     CASE WHEN (? IS NOT NULL AND i.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit,
                     CASE WHEN ((? IS NOT NULL AND i.author_user_id = ?) OR ? = 1) THEN 1 ELSE 0 END AS viewer_can_delete,
@@ -447,18 +547,19 @@ impl Store {
              JOIN users u ON u.id = i.author_user_id
              LEFT JOIN upvotes v ON v.idea_id = i.id
              GROUP BY i.id
-             ORDER BY upvote_count DESC, i.created_at DESC",
-        )
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(moderator)
-        .bind(moderator)
-        .fetch_all(&self.pool)
-        .await?;
+             ORDER BY upvote_count DESC, i.created_at DESC"
+        );
+        let rows = sqlx::query(&sql)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(moderator)
+            .bind(moderator)
+            .fetch_all(&self.pool)
+            .await?;
         rows.into_iter()
             .map(row_to_idea)
             .collect::<std::result::Result<Vec<_>, _>>()
@@ -473,10 +574,12 @@ impl Store {
     ) -> Result<Idea> {
         let viewer = viewer_id.map(|id| id.to_string());
         let moderator = i64::from(viewer_is_moderator);
-        let row = sqlx::query(
+        let comment_count_sql = self.comment_count_sql().await?;
+        let sql = format!(
             "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,
                     u.login, u.avatar_url,
                     COUNT(v.idea_id) AS upvote_count,
+                    {comment_count_sql} AS comment_count,
                     MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted,
                     CASE WHEN (? IS NOT NULL AND i.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit,
                     CASE WHEN ((? IS NOT NULL AND i.author_user_id = ?) OR ? = 1) THEN 1 ELSE 0 END AS viewer_can_delete,
@@ -485,19 +588,20 @@ impl Store {
              JOIN users u ON u.id = i.author_user_id
              LEFT JOIN upvotes v ON v.idea_id = i.id
              WHERE i.id = ?
-             GROUP BY i.id",
-        )
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(moderator)
-        .bind(moderator)
-        .bind(id.to_string())
-        .fetch_optional(&self.pool)
-        .await?;
+             GROUP BY i.id"
+        );
+        let row = sqlx::query(&sql)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(moderator)
+            .bind(moderator)
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await?;
         row.map(row_to_idea)
             .transpose()
             .map_err(StorageError::Sqlx)?
@@ -612,6 +716,164 @@ impl Store {
         }
         self.idea(idea_id, Some(user_id), viewer_is_moderator).await
     }
+
+    pub async fn list_comments(
+        &self,
+        idea_id: Uuid,
+        viewer_id: Option<Uuid>,
+        viewer_is_moderator: bool,
+    ) -> Result<Vec<Comment>> {
+        if !self.idea_exists(idea_id).await? {
+            return Err(StorageError::NotFound("idea"));
+        }
+        let viewer = viewer_id.map(|id| id.to_string());
+        let moderator = i64::from(viewer_is_moderator);
+        let rows = sqlx::query(
+            "SELECT c.id, c.idea_id, c.body, c.created_at, c.updated_at,
+                    u.login, u.avatar_url,
+                    CASE WHEN (? IS NOT NULL AND c.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit,
+                    CASE WHEN ((? IS NOT NULL AND c.author_user_id = ?) OR ? = 1) THEN 1 ELSE 0 END AS viewer_can_delete
+             FROM comments c
+             JOIN users u ON u.id = c.author_user_id
+             WHERE c.idea_id = ?
+             ORDER BY c.created_at ASC",
+        )
+        .bind(&viewer)
+        .bind(&viewer)
+        .bind(&viewer)
+        .bind(&viewer)
+        .bind(moderator)
+        .bind(idea_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter()
+            .map(row_to_comment)
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(StorageError::Sqlx)
+    }
+
+    pub async fn create_comment(
+        &self,
+        idea_id: Uuid,
+        body: &str,
+        author_id: Uuid,
+        author_is_moderator: bool,
+    ) -> Result<Comment> {
+        if !self.idea_exists(idea_id).await? {
+            return Err(StorageError::NotFound("idea"));
+        }
+        let id = Uuid::new_v4();
+        sqlx::query("INSERT INTO comments (id, idea_id, author_user_id, body) VALUES (?, ?, ?, ?)")
+            .bind(id.to_string())
+            .bind(idea_id.to_string())
+            .bind(author_id.to_string())
+            .bind(body)
+            .execute(&self.pool)
+            .await?;
+        self.comment(id, Some(author_id), author_is_moderator).await
+    }
+
+    pub async fn update_comment(
+        &self,
+        id: Uuid,
+        body: &str,
+        actor_id: Uuid,
+        actor_is_moderator: bool,
+    ) -> Result<Comment> {
+        let changed = sqlx::query("UPDATE comments SET body = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND author_user_id = ?")
+            .bind(body)
+            .bind(id.to_string())
+            .bind(actor_id.to_string())
+            .execute(&self.pool)
+            .await?
+            .rows_affected();
+        if changed == 0 {
+            return Err(StorageError::NotFound("comment"));
+        }
+        self.comment(id, Some(actor_id), actor_is_moderator).await
+    }
+
+    pub async fn delete_comment(
+        &self,
+        id: Uuid,
+        actor_id: Uuid,
+        actor_is_moderator: bool,
+    ) -> Result<()> {
+        let changed = if actor_is_moderator {
+            sqlx::query("DELETE FROM comments WHERE id = ?")
+                .bind(id.to_string())
+                .execute(&self.pool)
+                .await?
+                .rows_affected()
+        } else {
+            sqlx::query("DELETE FROM comments WHERE id = ? AND author_user_id = ?")
+                .bind(id.to_string())
+                .bind(actor_id.to_string())
+                .execute(&self.pool)
+                .await?
+                .rows_affected()
+        };
+        if changed == 0 {
+            return Err(StorageError::NotFound("comment"));
+        }
+        Ok(())
+    }
+
+    async fn comment(
+        &self,
+        id: Uuid,
+        viewer_id: Option<Uuid>,
+        viewer_is_moderator: bool,
+    ) -> Result<Comment> {
+        let viewer = viewer_id.map(|id| id.to_string());
+        let moderator = i64::from(viewer_is_moderator);
+        let row = sqlx::query(
+            "SELECT c.id, c.idea_id, c.body, c.created_at, c.updated_at,
+                    u.login, u.avatar_url,
+                    CASE WHEN (? IS NOT NULL AND c.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit,
+                    CASE WHEN ((? IS NOT NULL AND c.author_user_id = ?) OR ? = 1) THEN 1 ELSE 0 END AS viewer_can_delete
+             FROM comments c
+             JOIN users u ON u.id = c.author_user_id
+             WHERE c.id = ?",
+        )
+        .bind(&viewer)
+        .bind(&viewer)
+        .bind(&viewer)
+        .bind(&viewer)
+        .bind(moderator)
+        .bind(id.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(row_to_comment)
+            .transpose()
+            .map_err(StorageError::Sqlx)?
+            .ok_or(StorageError::NotFound("comment"))
+    }
+
+    async fn comment_count_sql(&self) -> Result<&'static str> {
+        if self.comments_table_exists().await? {
+            Ok("(SELECT COUNT(*) FROM comments c WHERE c.idea_id = i.id)")
+        } else {
+            Ok("0")
+        }
+    }
+
+    async fn comments_table_exists(&self) -> Result<bool> {
+        let exists: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'comments'",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(exists.is_some())
+    }
+
+    async fn idea_exists(&self, id: Uuid) -> Result<bool> {
+        let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM ideas WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(exists.is_some())
+    }
 }
 
 fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::Error> {
@@ -623,6 +885,7 @@ fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::
         title: row.try_get("title")?,
         body_text: row.try_get("body")?,
         upvote_count: row.try_get("upvote_count")?,
+        comment_count: row.try_get("comment_count")?,
         viewer_has_upvoted: row.try_get::<i64, _>("viewer_has_upvoted")? == 1,
         viewer_can_edit: row.try_get::<i64, _>("viewer_can_edit")? == 1,
         viewer_can_delete: row.try_get::<i64, _>("viewer_can_delete")? == 1,
@@ -635,6 +898,24 @@ fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::
         updated_at: parse_dt(row.try_get("updated_at")?),
         status,
         closed: status == IdeaStatus::Closed,
+    })
+}
+
+fn row_to_comment(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Comment, sqlx::Error> {
+    Ok(Comment {
+        id: Uuid::parse_str(row.try_get::<String, _>("id")?.as_str())
+            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+        idea_id: Uuid::parse_str(row.try_get::<String, _>("idea_id")?.as_str())
+            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+        body_text: row.try_get("body")?,
+        viewer_can_edit: row.try_get::<i64, _>("viewer_can_edit")? == 1,
+        viewer_can_delete: row.try_get::<i64, _>("viewer_can_delete")? == 1,
+        author: PublicUser {
+            login: row.try_get("login")?,
+            avatar_url: row.try_get("avatar_url")?,
+        },
+        created_at: parse_dt(row.try_get("created_at")?),
+        updated_at: parse_dt(row.try_get("updated_at")?),
     })
 }
 
@@ -794,6 +1075,107 @@ mod tests {
             .await
             .expect_err("regular author cannot mark in progress");
         assert!(matches!(error, StorageError::NotFound("idea")));
+    }
+
+    #[tokio::test]
+    async fn comments_are_listed_with_author_permissions_and_counts() {
+        let store = test_store().await;
+        let author = store
+            .upsert_user(9, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let commenter = store
+            .upsert_user(10, "commenter", "https://example.com/commenter.png")
+            .await
+            .expect("commenter");
+        let idea = store
+            .create_idea(
+                "A commentable idea",
+                "This is long enough body text for a valid idea.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("idea");
+
+        let comment = store
+            .create_comment(idea.id, "I would use this.", commenter.id, false)
+            .await
+            .expect("comment");
+        assert_eq!(comment.body_text, "I would use this.");
+        assert!(comment.viewer_can_edit);
+        assert!(comment.viewer_can_delete);
+
+        let comments = store
+            .list_comments(idea.id, Some(author.id), false)
+            .await
+            .expect("comments");
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].author.login, "commenter");
+        assert!(!comments[0].viewer_can_edit);
+        assert!(!comments[0].viewer_can_delete);
+
+        let updated_idea = store
+            .idea(idea.id, Some(author.id), false)
+            .await
+            .expect("idea");
+        assert_eq!(updated_idea.comment_count, 1);
+    }
+
+    #[tokio::test]
+    async fn comment_author_can_update_and_moderator_can_delete() {
+        let store = test_store().await;
+        let author = store
+            .upsert_user(11, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let commenter = store
+            .upsert_user(12, "commenter", "https://example.com/commenter.png")
+            .await
+            .expect("commenter");
+        let other = store
+            .upsert_user(13, "other", "https://example.com/other.png")
+            .await
+            .expect("other");
+        let moderator = store
+            .upsert_user(14, "moderator", "https://example.com/moderator.png")
+            .await
+            .expect("moderator");
+        let idea = store
+            .create_idea(
+                "Another commentable idea",
+                "This is long enough body text for a valid idea.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("idea");
+        let comment = store
+            .create_comment(idea.id, "Original note", commenter.id, false)
+            .await
+            .expect("comment");
+
+        let update_error = store
+            .update_comment(comment.id, "Not allowed", other.id, false)
+            .await
+            .expect_err("other cannot update");
+        assert!(matches!(update_error, StorageError::NotFound("comment")));
+
+        let updated = store
+            .update_comment(comment.id, "Updated note", commenter.id, false)
+            .await
+            .expect("author updates");
+        assert_eq!(updated.body_text, "Updated note");
+
+        store
+            .delete_comment(comment.id, moderator.id, true)
+            .await
+            .expect("moderator deletes");
+        let comments = store
+            .list_comments(idea.id, Some(moderator.id), true)
+            .await
+            .expect("comments");
+        assert!(comments.is_empty());
     }
 
     #[tokio::test]
