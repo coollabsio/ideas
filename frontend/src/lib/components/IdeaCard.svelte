@@ -41,13 +41,15 @@
     </h3>
     <p class="box-description">{excerpt}</p>
     <footer>
-      <img src={idea.author.avatarUrl} alt="" />
-      <strong>{idea.author.login}</strong>
-      <span aria-hidden="true">·</span>
-      <time datetime={idea.createdAt}>{date}</time>
-      <span aria-hidden="true">·</span>
-      <span>{idea.commentCount} {idea.commentCount === 1 ? 'comment' : 'comments'}</span>
-      {#if !canVote}<span aria-hidden="true">·</span><span>Sign in to vote</span>{/if}
+      <span class="idea-author">
+        <img src={idea.author.avatarUrl} alt="" />
+        <strong>{idea.author.login}</strong>
+      </span>
+      <span class="idea-meta-separator" aria-hidden="true">·</span>
+      <time class="idea-date" datetime={idea.createdAt}>{date}</time>
+      <span class="idea-meta-separator" aria-hidden="true">·</span>
+      <span class="idea-comments">{idea.commentCount} {idea.commentCount === 1 ? 'comment' : 'comments'}</span>
+      {#if !canVote}<span class="idea-meta-separator idea-signin-separator" aria-hidden="true">·</span><span class="idea-signin">Sign in to vote</span>{/if}
     </footer>
   </div>
 </div>
