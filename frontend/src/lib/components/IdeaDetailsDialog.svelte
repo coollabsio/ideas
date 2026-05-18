@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { deleteIdea, setIdeaStatus, updateIdea, type Idea } from '$lib/api';
+  import { deleteIdea, setIdeaStatus, updateIdea, type Idea, type IdeaStatus } from '$lib/api';
 
   export let idea: Idea | null = null;
   export let csrfToken: string | null = null;
@@ -55,12 +55,12 @@
     }
   }
 
-  async function toggleClosed() {
-    if (!idea || !canClose || !csrfToken || busy) return;
+  async function updateStatus(status: IdeaStatus) {
+    if (!idea || !canClose || !csrfToken || busy || idea.status === status) return;
     busy = true;
     error = '';
     try {
-      const updated = await setIdeaStatus(idea.id, !idea.closed, csrfToken);
+      const updated = await setIdeaStatus(idea.id, status, csrfToken);
       onUpdated(updated);
     } catch (err) {
       error = err instanceof Error ? err.message : 'Could not update idea status.';
@@ -113,7 +113,17 @@
         {#if error}<p class="error">{error}</p>{/if}
         <footer class="modal-actions">
           <div class="secondary-actions">
-            {#if canClose}<button class="button button-ghost" type="button" disabled={busy} on:click={toggleClosed}>{idea.closed ? 'Reopen' : 'Close'} idea</button>{/if}
+            {#if canClose}
+              {#if idea.status === 'open'}
+                <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('inprogress')}>Mark in progress</button>
+                <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
+              {:else if idea.status === 'inprogress'}
+                <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('open')}>Reopen</button>
+                <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
+              {:else}
+                <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('open')}>Reopen</button>
+              {/if}
+            {/if}
             {#if canDelete}<button class="button button-danger" type="button" disabled={busy} on:click={remove}>Delete</button>{/if}
           </div>
           <div class="primary-actions">
@@ -126,7 +136,8 @@
       <div class="idea-details-readonly">
         <div class="idea-details-status">
           <span class="count">{idea.upvoteCount} upvotes</span>
-          {#if idea.closed}<span class="closed-badge">Closed</span>{/if}
+          {#if idea.status === 'inprogress'}<span class="inprogress-badge">In progress</span>{/if}
+          {#if idea.status === 'closed'}<span class="closed-badge">Closed</span>{/if}
         </div>
         <h3>{idea.title}</h3>
         <p>{idea.bodyText}</p>
@@ -134,7 +145,17 @@
         {#if canDelete || canClose}
           <footer class="modal-actions">
             <div class="secondary-actions">
-              {#if canClose}<button class="button button-ghost" type="button" disabled={busy} on:click={toggleClosed}>{idea.closed ? 'Reopen' : 'Close'} idea</button>{/if}
+              {#if canClose}
+                {#if idea.status === 'open'}
+                  <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('inprogress')}>Mark in progress</button>
+                  <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
+                {:else if idea.status === 'inprogress'}
+                  <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('open')}>Reopen</button>
+                  <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
+                {:else}
+                  <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('open')}>Reopen</button>
+                {/if}
+              {/if}
               {#if canDelete}<button class="button button-danger" type="button" disabled={busy} on:click={remove}>Delete</button>{/if}
             </div>
             <div class="primary-actions">

@@ -26,14 +26,14 @@ Routes:
 - `POST /api/ideas`
 - `PATCH /api/ideas/:id`
 - `DELETE /api/ideas/:id` — authors for own ideas; moderators for any idea
-- `PATCH /api/ideas/:id/status` — moderators only
+- `PATCH /api/ideas/:id/status` — moderators only; accepts `open`, `inprogress`, or `closed`
 - `POST /api/ideas/:id/upvote`
 
 Authorization:
 
 - Idea authors can edit and delete their own ideas.
-- Idea authors cannot close/reopen ideas unless their GitHub login is in `IDEAS_MODERATOR_LOGINS`.
-- Moderators can close/reopen and delete any idea.
+- Idea authors cannot mark ideas in progress or close/reopen ideas unless their GitHub login is in `IDEAS_MODERATOR_LOGINS`.
+- Moderators can mark ideas in progress, close/reopen, and delete any idea.
 
 ## Database
 

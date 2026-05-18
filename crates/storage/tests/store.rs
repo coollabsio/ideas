@@ -1,3 +1,4 @@
+use ideas_domain::IdeaStatus;
 use ideas_storage::Store;
 use uuid::Uuid;
 
@@ -120,7 +121,8 @@ async fn dev_seed_is_repeatable() {
     assert_eq!(ideas.len(), 6);
     assert!(ideas
         .iter()
-        .any(|idea| idea.title == "Simple backup restore drill scheduler" && idea.closed));
+        .any(|idea| idea.title == "Simple backup restore drill scheduler"
+            && idea.status == IdeaStatus::Closed));
     assert!(ideas.iter().any(|idea| idea.upvote_count == 3));
 }
 

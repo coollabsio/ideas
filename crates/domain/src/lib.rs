@@ -24,6 +24,7 @@ pub struct PublicUser {
 #[serde(rename_all = "lowercase")]
 pub enum IdeaStatus {
     Open,
+    InProgress,
     Closed,
 }
 
@@ -31,12 +32,14 @@ impl IdeaStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Open => "open",
+            Self::InProgress => "inprogress",
             Self::Closed => "closed",
         }
     }
 
     pub fn from_db(value: &str) -> Self {
         match value {
+            "inprogress" => Self::InProgress,
             "closed" => Self::Closed,
             _ => Self::Open,
         }
@@ -57,6 +60,7 @@ pub struct Idea {
     pub author: PublicUser,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub status: IdeaStatus,
     pub closed: bool,
 }
 

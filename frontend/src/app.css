@@ -65,6 +65,7 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
 
 .coolbox { position: relative; display: flex; min-height: 4rem; cursor: pointer; gap: .75rem; border: 1px solid #e5e5e5; border-radius: .25rem; background: #fff; padding: .75rem; color: #000; transition: box-shadow .15s; }
 .coolbox:hover { box-shadow: 0 0 0 2px var(--coollabs); }
+.idea-card.inprogress { box-shadow: inset 4px 0 0 var(--warning); }
 .idea-card.closed { opacity: .78; }
 .upvote { position: relative; z-index: 1; display: flex; width: 3rem; height: 3.5rem; flex-shrink: 0; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #e5e5e5; border-radius: .25rem; background: #fff; color: #737373; cursor: pointer; transition: color .15s, border-color .15s, background-color .15s, opacity .15s; }
 .upvote:hover { border-color: color-mix(in srgb, var(--coollabs), transparent 60%); color: var(--coollabs); }
@@ -80,14 +81,21 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
 .idea-main footer img { width: 1rem; height: 1rem; border-radius: 9999px; border: 1px solid #e5e5e5; }
 .idea-main footer strong { font-weight: 700; text-transform: none; }
 .idea-main footer time { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: none; }
-.closed-badge { margin-left: .5rem; display: inline-block; border: 1px solid color-mix(in srgb, var(--error), transparent 50%); border-radius: 9999px; background: color-mix(in srgb, var(--error), transparent 90%); padding: .125rem .5rem; vertical-align: middle; color: var(--error); font-size: .75rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.closed-badge, .inprogress-badge { margin-left: .5rem; display: inline-block; border-radius: 9999px; padding: .125rem .5rem; vertical-align: middle; font-size: .75rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.closed-badge { border: 1px solid color-mix(in srgb, var(--error), transparent 50%); background: color-mix(in srgb, var(--error), transparent 90%); color: var(--error); }
+.inprogress-badge { border: 1px solid color-mix(in srgb, var(--warning), transparent 35%); background: color-mix(in srgb, var(--warning), transparent 82%); color: #a16207; }
 .empty { border: 1px dashed #d4d4d4; border-radius: .25rem; padding: 2rem 1rem; text-align: center; color: #737373; font-size: .875rem; }
 .callout { margin-bottom: 1rem; border-radius: .5rem; border: 1px solid #fde047; background: #fefce8; padding: 1rem; color: #a16207; font-size: .875rem; }
 .callout strong { color: #854d0e; }
+.idea-section summary { cursor: pointer; list-style: none; }
+.idea-section summary::-webkit-details-marker { display: none; }
+.idea-section summary h2 span, .closed-list summary span { display: inline-block; transform: rotate(0deg); transition: transform .15s; }
+.idea-section[open] summary h2 span, .closed-list[open] summary span { transform: rotate(90deg); }
+.idea-section .ideas-list { margin-top: .75rem; }
+.inprogress-list { margin-bottom: 1.5rem; }
+.all-ideas-list { margin-bottom: 1.5rem; }
 .closed-list { margin-top: 1.5rem; }
 .closed-list summary { display: flex; cursor: pointer; list-style: none; align-items: center; gap: .5rem; border-top: 1px solid #e5e5e5; padding-top: 1rem; color: #737373; font-size: .875rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-.closed-list summary span { transition: transform .15s; }
-.closed-list[open] summary span { transform: rotate(90deg); }
 .closed-list .ideas-list { margin-top: .75rem; }
 
 .input { display: block; width: 100%; border: 0; border-radius: .25rem; background: #fff; padding: .375rem .5rem; color: #000; font-size: .875rem; outline: none; box-shadow: inset 4px 0 0 transparent, inset 0 0 0 2px #e5e5e5; }
@@ -141,6 +149,7 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
   .callout { border-color: #854d0e; background: rgb(113 63 18 / .3); color: #fef08a; }
   .callout strong { color: #fde047; }
   .closed-list summary { border-color: var(--coolgray-200); }
+  .inprogress-badge { color: var(--warning); }
   .footer strong, .footer a { color: #d4d4d4; }
   .input { background: var(--coolgray-100); color: #fff; box-shadow: inset 4px 0 0 transparent, inset 0 0 0 2px var(--coolgray-300); }
   .input::placeholder { color: #525252; }

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use ideas_domain::{Idea, PublicUser, Session, User};
+use ideas_domain::{Idea, IdeaStatus, PublicUser, Session, User};
 use sqlx::{
     migrate::{Migration, MigrationType, Migrator},
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -13,6 +13,10 @@ use uuid::Uuid;
 
 const INIT_UP_SQL: &str = include_str!("../migrations/20260507120000_init.up.sql");
 const INIT_DOWN_SQL: &str = include_str!("../migrations/20260507120000_init.down.sql");
+const ADD_INPROGRESS_STATUS_UP_SQL: &str =
+    include_str!("../migrations/20260518120000_add_inprogress_status.up.sql");
+const ADD_INPROGRESS_STATUS_DOWN_SQL: &str =
+    include_str!("../migrations/20260518120000_add_inprogress_status.down.sql");
 
 fn embedded_migrator() -> Migrator {
     Migrator {
@@ -30,6 +34,20 @@ fn embedded_migrator() -> Migrator {
                 MigrationType::ReversibleDown,
                 Cow::Borrowed(INIT_DOWN_SQL),
                 INIT_DOWN_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260518120000,
+                Cow::Borrowed("add_inprogress_status"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(ADD_INPROGRESS_STATUS_UP_SQL),
+                ADD_INPROGRESS_STATUS_UP_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260518120000,
+                Cow::Borrowed("add_inprogress_status"),
+                MigrationType::ReversibleDown,
+                Cow::Borrowed(ADD_INPROGRESS_STATUS_DOWN_SQL),
+                ADD_INPROGRESS_STATUS_DOWN_SQL.starts_with("-- no-transaction"),
             ),
         ]),
         ..Migrator::DEFAULT
@@ -508,19 +526,18 @@ impl Store {
         self.idea(id, Some(actor_id), actor_is_moderator).await
     }
 
-    pub async fn set_idea_closed(
+    pub async fn set_idea_status(
         &self,
         id: Uuid,
-        closed: bool,
+        status: IdeaStatus,
         actor_id: Uuid,
         actor_is_moderator: bool,
     ) -> Result<Idea> {
         if !actor_is_moderator {
             return Err(StorageError::NotFound("idea"));
         }
-        let status = if closed { "closed" } else { "open" };
         let changed = sqlx::query("UPDATE ideas SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
-            .bind(status)
+            .bind(status.as_str())
             .bind(id.to_string())
             .execute(&self.pool)
             .await?
@@ -529,6 +546,22 @@ impl Store {
             return Err(StorageError::NotFound("idea"));
         }
         self.idea(id, Some(actor_id), actor_is_moderator).await
+    }
+
+    pub async fn set_idea_closed(
+        &self,
+        id: Uuid,
+        closed: bool,
+        actor_id: Uuid,
+        actor_is_moderator: bool,
+    ) -> Result<Idea> {
+        let status = if closed {
+            IdeaStatus::Closed
+        } else {
+            IdeaStatus::Open
+        };
+        self.set_idea_status(id, status, actor_id, actor_is_moderator)
+            .await
     }
 
     pub async fn delete_idea(
@@ -584,7 +617,7 @@ impl Store {
 fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::Error> {
     let id = Uuid::parse_str(row.try_get::<String, _>("id")?.as_str())
         .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
-    let status: String = row.try_get("status")?;
+    let status = IdeaStatus::from_db(&row.try_get::<String, _>("status")?);
     Ok(Idea {
         id,
         title: row.try_get("title")?,
@@ -600,13 +633,14 @@ fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::
         },
         created_at: parse_dt(row.try_get("created_at")?),
         updated_at: parse_dt(row.try_get("updated_at")?),
-        closed: status == "closed",
+        status,
+        closed: status == IdeaStatus::Closed,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{StorageError, Store};
+    use super::{IdeaStatus, StorageError, Store};
     use uuid::Uuid;
 
     async fn test_store() -> Store {
@@ -703,6 +737,63 @@ mod tests {
             .delete_idea(idea.id, moderator.id, true)
             .await
             .expect("moderator delete");
+    }
+
+    #[tokio::test]
+    async fn moderator_can_mark_idea_in_progress() {
+        let store = test_store().await;
+        let author = store
+            .upsert_user(6, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let moderator = store
+            .upsert_user(7, "moderator", "https://example.com/moderator.png")
+            .await
+            .expect("moderator");
+        let idea = store
+            .create_idea(
+                "An idea ready for progress",
+                "This is long enough body text for a valid idea.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("idea");
+
+        let in_progress = store
+            .set_idea_status(idea.id, IdeaStatus::InProgress, moderator.id, true)
+            .await
+            .expect("moderator mark in progress");
+        assert_eq!(in_progress.status, IdeaStatus::InProgress);
+        assert!(!in_progress.closed);
+
+        let public_view = store.idea(idea.id, None, false).await.expect("public view");
+        assert_eq!(public_view.status, IdeaStatus::InProgress);
+        assert!(!public_view.closed);
+    }
+
+    #[tokio::test]
+    async fn regular_author_cannot_mark_idea_in_progress() {
+        let store = test_store().await;
+        let author = store
+            .upsert_user(8, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let idea = store
+            .create_idea(
+                "A regular author idea",
+                "This is long enough body text for a valid idea.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("idea");
+
+        let error = store
+            .set_idea_status(idea.id, IdeaStatus::InProgress, author.id, false)
+            .await
+            .expect_err("regular author cannot mark in progress");
+        assert!(matches!(error, StorageError::NotFound("idea")));
     }
 
     #[tokio::test]

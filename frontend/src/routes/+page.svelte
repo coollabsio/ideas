@@ -24,8 +24,9 @@
     .map((err) => (err instanceof Error ? err.message : 'Could not load app data.'))
     .join(' ');
   $: error = actionError || queryError;
-  $: openIdeas = ideas.filter((idea) => !idea.closed);
-  $: closedIdeas = ideas.filter((idea) => idea.closed);
+  $: inProgressIdeas = ideas.filter((idea) => idea.status === 'inprogress');
+  $: openIdeas = ideas.filter((idea) => idea.status === 'open');
+  $: closedIdeas = ideas.filter((idea) => idea.status === 'closed');
   $: totalUpvotes = ideas.reduce((sum, idea) => sum + idea.upvoteCount, 0);
   $: if (selectedIdea) {
     const refreshed = ideas.find((idea) => idea.id === selectedIdea?.id);
@@ -116,7 +117,7 @@
       <dl class="stats">
         <div>
           <dt>Ideas</dt>
-          <dd>{openIdeas.length}</dd>
+          <dd>{openIdeas.length + inProgressIdeas.length}</dd>
         </div>
         <div>
           <dt>Upvotes</dt>
@@ -127,21 +128,40 @@
 
     {#if error}<div class="callout callout-warning"><strong>Notice ·</strong> {error}</div>{/if}
 
-    <div class="list-head">
-      <h2><span>▸</span> All ideas</h2>
-      <span>sorted by upvotes</span>
-    </div>
-
     {#if loading}
       <p class="empty">Loading ideas…</p>
     {:else if ideas.length === 0}
       <p class="empty">No ideas yet. Sign in with GitHub and submit the first one.</p>
     {:else}
-      <div class="ideas-list">
-        {#each openIdeas as idea (idea.id)}
-          <IdeaCard {idea} canVote={Boolean(me.user)} busy={busyIdea === idea.id} onToggle={toggleUpvote} onOpen={(item) => (selectedIdea = item)} />
-        {/each}
-      </div>
+      {#if inProgressIdeas.length > 0}
+        <details class="idea-section inprogress-list" open>
+          <summary class="list-head">
+            <h2 id="inprogress-ideas-heading"><span>▸</span> In progress <small>({inProgressIdeas.length})</small></h2>
+            <span>currently being worked on</span>
+          </summary>
+          <div class="ideas-list">
+            {#each inProgressIdeas as idea (idea.id)}
+              <IdeaCard {idea} canVote={Boolean(me.user)} busy={busyIdea === idea.id} onToggle={toggleUpvote} onOpen={(item) => (selectedIdea = item)} />
+            {/each}
+          </div>
+        </details>
+      {/if}
+
+      <details class="idea-section all-ideas-list" open>
+        <summary class="list-head">
+          <h2><span>▸</span> All ideas <small>({openIdeas.length})</small></h2>
+          <span>sorted by upvotes</span>
+        </summary>
+        {#if openIdeas.length > 0}
+          <div class="ideas-list">
+            {#each openIdeas as idea (idea.id)}
+              <IdeaCard {idea} canVote={Boolean(me.user)} busy={busyIdea === idea.id} onToggle={toggleUpvote} onOpen={(item) => (selectedIdea = item)} />
+            {/each}
+          </div>
+        {:else}
+          <p class="empty">No open ideas right now.</p>
+        {/if}
+      </details>
 
       {#if closedIdeas.length > 0}
         <details class="closed-list">

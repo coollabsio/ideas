@@ -3,6 +3,8 @@ export interface User {
   avatarUrl: string;
 }
 
+export type IdeaStatus = 'open' | 'inprogress' | 'closed';
+
 export interface Idea {
   id: string;
   title: string;
@@ -15,6 +17,7 @@ export interface Idea {
   author: User;
   createdAt: string;
   updatedAt: string;
+  status: IdeaStatus;
   closed: boolean;
 }
 
@@ -82,12 +85,12 @@ export async function updateIdea(id: string, title: string, body: string, csrfTo
   return res.json();
 }
 
-export async function setIdeaStatus(id: string, closed: boolean, csrfToken: string): Promise<Idea> {
+export async function setIdeaStatus(id: string, status: IdeaStatus, csrfToken: string): Promise<Idea> {
   const res = await fetch(`/api/ideas/${id}/status`, {
     method: 'PATCH',
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-    body: JSON.stringify({ closed })
+    body: JSON.stringify({ status })
   });
   if (res.status === 401) window.location.href = '/api/auth/login';
   if (!res.ok) throw new Error(await res.text());

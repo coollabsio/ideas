@@ -9,7 +9,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use clap::{Parser, Subcommand};
-use ideas_domain::Idea;
+use ideas_domain::{Idea, IdeaStatus};
 use ideas_storage::Store;
 use reqwest::Client;
 use rust_embed::RustEmbed;
@@ -627,7 +627,7 @@ async fn update_idea(
 
 #[derive(Deserialize)]
 struct StatusBody {
-    closed: bool,
+    status: IdeaStatus,
 }
 
 async fn set_idea_status(
@@ -645,11 +645,15 @@ async fn set_idea_status(
     }
     let actor_is_moderator = state.config.is_moderator(&session.user.login);
     if !actor_is_moderator {
-        return (StatusCode::FORBIDDEN, "Only moderators can close ideas").into_response();
+        return (
+            StatusCode::FORBIDDEN,
+            "Only moderators can update idea status",
+        )
+            .into_response();
     }
     match state
         .store
-        .set_idea_closed(id, payload.closed, session.user_id, actor_is_moderator)
+        .set_idea_status(id, payload.status, session.user_id, actor_is_moderator)
         .await
     {
         Ok(idea) => Json(idea).into_response(),
