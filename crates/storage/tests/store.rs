@@ -2,6 +2,10 @@ use ideas_domain::IdeaStatus;
 use ideas_storage::Store;
 use uuid::Uuid;
 
+const INIT_UP_SQL: &str = include_str!("../migrations/20260507120000_init.up.sql");
+const ADD_INPROGRESS_STATUS_UP_SQL: &str =
+    include_str!("../migrations/20260518120000_add_inprogress_status.up.sql");
+
 async fn test_store() -> Store {
     let path = std::env::temp_dir().join(format!("ideas-test-{}.db", Uuid::new_v4()));
     let store = Store::connect(path.to_str().expect("utf8 temp path"))
@@ -9,6 +13,60 @@ async fn test_store() -> Store {
         .expect("connect");
     store.migrate().await.expect("migrate");
     store
+}
+
+#[tokio::test]
+async fn status_migration_preserves_upvotes_when_drop_cascades() {
+    let path = std::env::temp_dir().join(format!("ideas-migration-test-{}.db", Uuid::new_v4()));
+    let store = Store::connect(path.to_str().expect("utf8 temp path"))
+        .await
+        .expect("connect");
+    sqlx::raw_sql(INIT_UP_SQL)
+        .execute(store.pool())
+        .await
+        .expect("init schema");
+
+    let author = store
+        .upsert_user(101, "author", "https://example.com/author.png")
+        .await
+        .expect("author");
+    let voter = store
+        .upsert_user(102, "voter", "https://example.com/voter.png")
+        .await
+        .expect("voter");
+    let idea = store
+        .create_idea(
+            "A migration safety idea",
+            "This body is long enough to satisfy validation before migration.",
+            author.id,
+            false,
+        )
+        .await
+        .expect("idea");
+    store
+        .set_upvote(idea.id, voter.id, true, false)
+        .await
+        .expect("upvote before migration");
+
+    let migration = ADD_INPROGRESS_STATUS_UP_SQL
+        .replace("PRAGMA foreign_keys = OFF;", "PRAGMA foreign_keys = ON;");
+    sqlx::raw_sql(&migration)
+        .execute(store.pool())
+        .await
+        .expect("status migration");
+
+    let migrated = store
+        .idea(idea.id, Some(voter.id), false)
+        .await
+        .expect("migrated idea");
+    assert_eq!(migrated.upvote_count, 1);
+    assert!(migrated.viewer_has_upvoted);
+
+    let upvote_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM upvotes")
+        .fetch_one(store.pool())
+        .await
+        .expect("upvote row count");
+    assert_eq!(upvote_rows, 1);
 }
 
 #[tokio::test]
