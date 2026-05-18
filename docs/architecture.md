@@ -37,7 +37,7 @@ Authorization:
 
 ## Database
 
-Migrations live in `crates/storage/migrations` and run through `sqlx::migrate!`.
+Migrations live in `crates/storage/migrations` and are embedded into the storage crate for runtime migration/revert operations.
 
 Tables:
 

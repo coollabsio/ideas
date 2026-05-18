@@ -1,0 +1,6 @@
+[advisories]
+ignore = [
+  # sqlx 0.8.6 keeps sqlx-mysql/rsa in Cargo.lock as an optional dependency path.
+  # This app only enables SQLite and cargo tree confirms sqlx-mysql is not built.
+  "RUSTSEC-2023-0071",
+]

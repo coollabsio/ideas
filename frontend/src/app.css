@@ -109,6 +109,7 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
 .idea-details-readonly { margin-top: 1rem; }
 .idea-details-readonly h3 { margin-top: .75rem; font-size: 1.25rem; }
 .idea-details-readonly p { margin-top: .75rem; color: #404040; white-space: pre-wrap; line-height: 1.6; }
+.idea-details-readonly .modal-actions { margin-top: 1.25rem; }
 .idea-details-status { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; color: #737373; text-transform: uppercase; }
 
 @media (prefers-color-scheme: dark) {

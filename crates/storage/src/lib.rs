@@ -1,15 +1,40 @@
 use chrono::{DateTime, Utc};
 use ideas_domain::{Idea, PublicUser, Session, User};
 use sqlx::{
+    migrate::{Migration, MigrationType, Migrator},
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     Row, SqlitePool,
 };
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use thiserror::Error;
 use uuid::Uuid;
 
-pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+const INIT_UP_SQL: &str = include_str!("../migrations/20260507120000_init.up.sql");
+const INIT_DOWN_SQL: &str = include_str!("../migrations/20260507120000_init.down.sql");
+
+fn embedded_migrator() -> Migrator {
+    Migrator {
+        migrations: Cow::Owned(vec![
+            Migration::new(
+                20260507120000,
+                Cow::Borrowed("init"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(INIT_UP_SQL),
+                INIT_UP_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260507120000,
+                Cow::Borrowed("init"),
+                MigrationType::ReversibleDown,
+                Cow::Borrowed(INIT_DOWN_SQL),
+                INIT_DOWN_SQL.starts_with("-- no-transaction"),
+            ),
+        ]),
+        ..Migrator::DEFAULT
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -151,7 +176,7 @@ impl Store {
     }
 
     pub async fn migrate(&self) -> anyhow::Result<()> {
-        MIGRATOR.run(&self.pool).await?;
+        embedded_migrator().run(&self.pool).await?;
         Ok(())
     }
 
@@ -167,7 +192,7 @@ impl Store {
         } else {
             -1
         };
-        MIGRATOR.undo(&self.pool, target).await?;
+        embedded_migrator().undo(&self.pool, target).await?;
         Ok(())
     }
 
