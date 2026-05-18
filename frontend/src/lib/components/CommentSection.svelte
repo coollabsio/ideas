@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createComment, deleteComment, fetchComments, updateComment, type Comment } from '$lib/api';
+  import { createComment, deleteComment, fetchComments, setCommentUpvote, updateComment, type Comment } from '$lib/api';
 
   export let ideaId: string | null = null;
   export let csrfToken: string | null = null;
@@ -12,6 +12,7 @@
   let error = '';
   let loading = false;
   let busy = false;
+  let votingId: string | null = null;
   let loadedIdeaId: string | null = null;
   let editingId: string | null = null;
   let editingBody = '';
@@ -37,7 +38,7 @@
     loading = true;
     error = '';
     try {
-      comments = await fetchComments(nextIdeaId);
+      comments = sortComments(await fetchComments(nextIdeaId));
     } catch (err) {
       error = err instanceof Error ? err.message : 'Could not load comments.';
     } finally {
@@ -51,7 +52,7 @@
     error = '';
     try {
       const comment = await createComment(ideaId, body.trim(), csrfToken);
-      comments = [...comments, comment];
+      comments = sortComments([...comments, comment]);
       body = '';
       onCommentCountChange(1);
     } catch (err) {
@@ -103,8 +104,41 @@
     }
   }
 
+  async function toggleUpvote(comment: Comment) {
+    if (!csrfToken) {
+      window.location.href = '/api/auth/login';
+      return;
+    }
+    if (votingId || busy) return;
+    votingId = comment.id;
+    error = '';
+    try {
+      const updated = await setCommentUpvote(comment.id, !comment.viewerHasUpvoted, csrfToken);
+      comments = sortComments(comments.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Could not update comment upvote.';
+    } finally {
+      votingId = null;
+    }
+  }
+
   function formatDate(value: string) {
     return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function sortComments(next: Comment[]) {
+    const chronological = [...next].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    let topIndex = -1;
+    let topUpvotes = 0;
+    chronological.forEach((comment, index) => {
+      if (comment.upvoteCount > topUpvotes) {
+        topIndex = index;
+        topUpvotes = comment.upvoteCount;
+      }
+    });
+    if (topIndex <= 0) return chronological;
+    const [topComment] = chronological.splice(topIndex, 1);
+    return [topComment, ...chronological];
   }
 </script>
 
@@ -143,12 +177,27 @@
             </footer>
           {:else}
             <p>{comment.bodyText}</p>
-            {#if comment.viewerCanEdit || comment.viewerCanDelete}
-              <footer class="comment-actions">
-                {#if comment.viewerCanEdit}<button class="button button-ghost" type="button" disabled={busy} on:click={() => startEdit(comment)}>Edit</button>{/if}
-                {#if comment.viewerCanDelete}<button class="button button-danger" type="button" disabled={busy} on:click={() => remove(comment)}>Delete</button>{/if}
-              </footer>
-            {/if}
+            <footer class="comment-actions comment-actions-split">
+              <button
+                class:active={comment.viewerHasUpvoted}
+                class="comment-upvote"
+                type="button"
+                disabled={busy || votingId === comment.id}
+                aria-label={comment.viewerHasUpvoted ? 'Remove comment upvote' : csrfToken ? 'Upvote comment' : 'Sign in to upvote comment'}
+                on:click={() => toggleUpvote(comment)}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" class="comment-upvote-icon" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 5l-7 7M12 5l7 7M12 5v14" />
+                </svg>
+                <span>{comment.upvoteCount}</span>
+              </button>
+              {#if comment.viewerCanEdit || comment.viewerCanDelete}
+                <div class="comment-admin-actions">
+                  {#if comment.viewerCanEdit}<button class="button button-ghost" type="button" disabled={busy} on:click={() => startEdit(comment)}>Edit</button>{/if}
+                  {#if comment.viewerCanDelete}<button class="button button-danger" type="button" disabled={busy} on:click={() => remove(comment)}>Delete</button>{/if}
+                </div>
+              {/if}
+            </footer>
           {/if}
         </article>
       {/each}

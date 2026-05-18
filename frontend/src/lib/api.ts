@@ -31,6 +31,8 @@ export interface Comment {
   id: string;
   ideaId: string;
   bodyText: string;
+  upvoteCount: number;
+  viewerHasUpvoted: boolean;
   viewerCanEdit: boolean;
   viewerCanDelete: boolean;
   author: User;
@@ -162,6 +164,19 @@ export async function deleteComment(id: string, csrfToken: string): Promise<void
   });
   if (res.status === 401) window.location.href = '/api/auth/login';
   if (!res.ok) throw new Error(await res.text());
+}
+
+export async function setCommentUpvote(id: string, upvoted: boolean, csrfToken: string): Promise<Comment> {
+  const res = await fetch(`/api/comments/${id}/upvote`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+    body: JSON.stringify({ upvoted })
+  });
+  if (res.status === 401) window.location.href = '/api/auth/login';
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.comment;
 }
 
 export async function setUpvote(id: string, upvoted: boolean, csrfToken: string): Promise<Idea> {

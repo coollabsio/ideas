@@ -9,7 +9,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use clap::{Parser, Subcommand};
-use ideas_domain::{Idea, IdeaStatus};
+use ideas_domain::{Comment, Idea, IdeaStatus};
 use ideas_storage::Store;
 use reqwest::Client;
 use rust_embed::RustEmbed;
@@ -275,6 +275,7 @@ fn router(state: AppState) -> Router {
             "/api/ideas/:id/comments",
             get(list_comments).post(create_comment),
         )
+        .route("/api/comments/:id/upvote", post(set_comment_upvote))
         .route(
             "/api/comments/:id",
             patch(update_comment).delete(delete_comment),
@@ -720,6 +721,14 @@ struct UpvoteResponse {
     idea: Idea,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CommentUpvoteResponse {
+    upvote_count: i64,
+    viewer_has_upvoted: bool,
+    comment: Comment,
+}
+
 async fn set_upvote(
     State(state): State<AppState>,
     jar: CookieJar,
@@ -826,6 +835,50 @@ async fn create_comment(
         Err(ideas_storage::StorageError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
         Err(err) => {
             tracing::error!(?err, "failed to create comment");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn set_comment_upvote(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<UpvoteBody>,
+) -> impl IntoResponse {
+    let Some(session) = require_session(&state, &jar).await else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let key = rate_limit_key(&headers, &jar, Some(session.user_id));
+    if !state
+        .rate_limiter
+        .allow("comment-upvote", &key, UPVOTE_LIMIT, UPVOTE_WINDOW)
+    {
+        return (StatusCode::TOO_MANY_REQUESTS, "Too many upvote changes").into_response();
+    }
+    if !csrf_ok(&headers, &session.csrf_token) {
+        return (StatusCode::FORBIDDEN, "Bad CSRF token").into_response();
+    }
+    match state
+        .store
+        .set_comment_upvote(
+            id,
+            session.user_id,
+            payload.upvoted,
+            state.config.is_moderator(&session.user.login),
+        )
+        .await
+    {
+        Ok(comment) => Json(CommentUpvoteResponse {
+            upvote_count: comment.upvote_count,
+            viewer_has_upvoted: comment.viewer_has_upvoted,
+            comment,
+        })
+        .into_response(),
+        Err(ideas_storage::StorageError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
+        Err(err) => {
+            tracing::error!(?err, "failed to set comment upvote");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
@@ -1157,6 +1210,57 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn comment_upvote_route_updates_comment() {
+        let state = test_state("http://localhost:4321").await;
+        let author = state
+            .store
+            .upsert_user(301, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let voter = state
+            .store
+            .upsert_user(302, "voter", "https://example.com/voter.png")
+            .await
+            .expect("voter");
+        let idea = state
+            .store
+            .create_idea(
+                "A routed comment upvote",
+                "This body is long enough for a routed comment upvote test.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("idea");
+        let comment = state
+            .store
+            .create_comment(idea.id, "A comment worth upvoting.", author.id, false)
+            .await
+            .expect("comment");
+        state
+            .store
+            .create_session("sid-comment-upvote", "csrf-comment-upvote", &voter, 3600)
+            .await
+            .expect("session");
+        let app = router(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/comments/{}/upvote", comment.id))
+                    .header("cookie", "sid=sid-comment-upvote")
+                    .header("content-type", "application/json")
+                    .header("x-csrf-token", "csrf-comment-upvote")
+                    .body(Body::from(r#"{"upvoted":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[test]

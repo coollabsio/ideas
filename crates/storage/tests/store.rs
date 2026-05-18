@@ -7,6 +7,7 @@ use uuid::Uuid;
 const INIT_UP_SQL: &str = include_str!("../migrations/20260507120000_init.up.sql");
 const ADD_INPROGRESS_STATUS_UP_SQL: &str =
     include_str!("../migrations/20260518120000_add_inprogress_status.up.sql");
+const ADD_COMMENTS_UP_SQL: &str = include_str!("../migrations/20260518130000_add_comments.up.sql");
 
 const ORIGINAL_ADD_INPROGRESS_STATUS_UP_SQL: &str = r#"-- no-transaction
 PRAGMA foreign_keys = OFF;
@@ -136,6 +137,14 @@ async fn migrate_skips_applied_migration_with_checksum_mismatch_and_applies_pend
     .await
     .expect("comments table lookup");
     assert_eq!(comments_table.as_deref(), Some("comments"));
+
+    let comment_upvotes_table: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'comment_upvotes'",
+    )
+    .fetch_optional(store.pool())
+    .await
+    .expect("comment upvotes table lookup");
+    assert_eq!(comment_upvotes_table.as_deref(), Some("comment_upvotes"));
 }
 
 #[tokio::test]
@@ -212,6 +221,184 @@ async fn creates_and_toggles_upvotes() {
         .expect("unvote");
     assert_eq!(unvoted.upvote_count, 0);
     assert!(!unvoted.viewer_has_upvoted);
+}
+
+#[tokio::test]
+async fn comment_upvote_migration_preserves_existing_comments() {
+    let path = std::env::temp_dir().join(format!(
+        "ideas-comment-migration-test-{}.db",
+        Uuid::new_v4()
+    ));
+    let store = Store::connect(path.to_str().expect("utf8 temp path"))
+        .await
+        .expect("connect");
+    let old_migrator = Migrator {
+        migrations: Cow::Owned(vec![
+            Migration::new(
+                20260507120000,
+                Cow::Borrowed("init"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(INIT_UP_SQL),
+                INIT_UP_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260518120000,
+                Cow::Borrowed("add_inprogress_status"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(ADD_INPROGRESS_STATUS_UP_SQL),
+                ADD_INPROGRESS_STATUS_UP_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260518130000,
+                Cow::Borrowed("add_comments"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(ADD_COMMENTS_UP_SQL),
+                ADD_COMMENTS_UP_SQL.starts_with("-- no-transaction"),
+            ),
+        ]),
+        ..Migrator::DEFAULT
+    };
+    old_migrator
+        .run(store.pool())
+        .await
+        .expect("old migrations apply");
+
+    let author = store
+        .upsert_user(201, "author", "https://example.com/author.png")
+        .await
+        .expect("author");
+    let idea = store
+        .create_idea(
+            "A comment migration idea",
+            "This body is long enough for a migration preservation test.",
+            author.id,
+            false,
+        )
+        .await
+        .expect("idea");
+    let comment = store
+        .create_comment(idea.id, "Keep this existing comment.", author.id, false)
+        .await
+        .expect("comment before migration");
+
+    store.migrate().await.expect("comment upvote migration");
+
+    let comments = store
+        .list_comments(idea.id, Some(author.id), false)
+        .await
+        .expect("comments after migration");
+    assert_eq!(comments.len(), 1);
+    assert_eq!(comments[0].id, comment.id);
+    assert_eq!(comments[0].body_text, "Keep this existing comment.");
+    assert_eq!(comments[0].upvote_count, 0);
+    assert!(!comments[0].viewer_has_upvoted);
+}
+
+#[tokio::test]
+async fn creates_and_toggles_comment_upvotes() {
+    let store = test_store().await;
+    let author = store
+        .upsert_user(211, "author", "https://example.com/author.png")
+        .await
+        .expect("author");
+    let voter = store
+        .upsert_user(212, "voter", "https://example.com/voter.png")
+        .await
+        .expect("voter");
+    let idea = store
+        .create_idea(
+            "A comment upvote idea",
+            "This body is long enough for a comment upvote test.",
+            author.id,
+            false,
+        )
+        .await
+        .expect("idea");
+    let comment = store
+        .create_comment(idea.id, "This comment can be upvoted.", author.id, false)
+        .await
+        .expect("comment");
+    assert_eq!(comment.upvote_count, 0);
+    assert!(!comment.viewer_has_upvoted);
+
+    let voted = store
+        .set_comment_upvote(comment.id, voter.id, true, false)
+        .await
+        .expect("comment upvote");
+    assert_eq!(voted.upvote_count, 1);
+    assert!(voted.viewer_has_upvoted);
+
+    let voted_again = store
+        .set_comment_upvote(comment.id, voter.id, true, false)
+        .await
+        .expect("idempotent comment upvote");
+    assert_eq!(voted_again.upvote_count, 1);
+
+    let unvoted = store
+        .set_comment_upvote(comment.id, voter.id, false, false)
+        .await
+        .expect("comment unvote");
+    assert_eq!(unvoted.upvote_count, 0);
+    assert!(!unvoted.viewer_has_upvoted);
+}
+
+#[tokio::test]
+async fn list_comments_promotes_only_the_most_upvoted_comment() {
+    let store = test_store().await;
+    let author = store
+        .upsert_user(221, "author", "https://example.com/author.png")
+        .await
+        .expect("author");
+    let voter = store
+        .upsert_user(222, "voter", "https://example.com/voter.png")
+        .await
+        .expect("voter");
+    let idea = store
+        .create_idea(
+            "A sorted comment idea",
+            "This body is long enough for a sorted comment list test.",
+            author.id,
+            false,
+        )
+        .await
+        .expect("idea");
+    let first = store
+        .create_comment(idea.id, "First chronological comment.", author.id, false)
+        .await
+        .expect("first comment");
+    let second = store
+        .create_comment(idea.id, "Second chronological comment.", author.id, false)
+        .await
+        .expect("second comment");
+    let third = store
+        .create_comment(idea.id, "Third chronological comment.", author.id, false)
+        .await
+        .expect("third comment");
+    for (comment, created_at) in [
+        (&first, "2026-05-18T10:00:00.000Z"),
+        (&second, "2026-05-18T10:01:00.000Z"),
+        (&third, "2026-05-18T10:02:00.000Z"),
+    ] {
+        sqlx::query("UPDATE comments SET created_at = ?, updated_at = ? WHERE id = ?")
+            .bind(created_at)
+            .bind(created_at)
+            .bind(comment.id.to_string())
+            .execute(store.pool())
+            .await
+            .expect("set comment timestamp");
+    }
+    store
+        .set_comment_upvote(third.id, voter.id, true, false)
+        .await
+        .expect("upvote third comment");
+
+    let comments = store
+        .list_comments(idea.id, Some(voter.id), false)
+        .await
+        .expect("comments");
+    assert_eq!(comments[0].id, third.id);
+    assert_eq!(comments[1].id, first.id);
+    assert_eq!(comments[2].id, second.id);
 }
 
 #[tokio::test]

@@ -237,6 +237,9 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
   .comment-form label span, .comment-editor-label span { gap: .5rem; letter-spacing: .08em; line-height: 1.35; }
   .comment-actions, .comment-submit-row { justify-content: stretch; }
   .comment-actions .button, .comment-submit-row .button { flex: 1 1 auto; }
+  .comment-actions-split { align-items: stretch; flex-direction: column; }
+  .comment-upvote, .comment-admin-actions { justify-content: center; }
+  .comment-admin-actions .button { flex: 1 1 auto; }
 }
 
 .comments-section { margin-top: 1.25rem; border-top: 1px solid #e5e5e5; padding-top: 1rem; }
@@ -255,6 +258,14 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
 .comment-card header time { color: #737373; font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; }
 .comment-card p { margin: .75rem 0 0; white-space: pre-wrap; color: #404040; line-height: 1.5; }
 .comment-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-top: .75rem; }
+.comment-actions-split { align-items: center; justify-content: space-between; }
+.comment-admin-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.comment-upvote { display: inline-flex; height: 2rem; align-items: center; gap: .35rem; border: 1px solid #e5e5e5; border-radius: .25rem; background: #fff; padding: 0 .5rem; color: #737373; cursor: pointer; font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; font-weight: 700; transition: color .15s, border-color .15s, background-color .15s, opacity .15s; }
+.comment-upvote:hover { border-color: color-mix(in srgb, var(--coollabs), transparent 60%); color: var(--coollabs); }
+.comment-upvote.active { border-color: var(--coollabs); background: var(--coollabs-50); color: var(--coollabs-200); }
+.comment-upvote:disabled { cursor: not-allowed; opacity: .5; }
+.comment-upvote:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--coollabs), 0 0 0 4px #fff; }
+.comment-upvote-icon { width: .75rem; height: .75rem; }
 .comment-form { display: flex; flex-direction: column; gap: .75rem; margin-top: .75rem; }
 .comment-form label span, .comment-editor-label span { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: .25rem; color: #404040; font-size: .75rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .comment-textarea { min-height: 6rem; }
@@ -269,5 +280,9 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
   .comment-card header img { border-color: var(--coolgray-300); }
   .comment-card header strong { color: #fff; }
   .comment-card p { color: #d4d4d4; }
+  .comment-upvote { border-color: var(--coolgray-300); background: var(--base); color: #a3a3a3; }
+  .comment-upvote:hover { border-color: color-mix(in srgb, var(--warning), transparent 60%); color: var(--warning); }
+  .comment-upvote.active { border-color: color-mix(in srgb, var(--warning), transparent 50%); background: color-mix(in srgb, var(--warning), transparent 85%); color: var(--warning); }
+  .comment-upvote:focus-visible { box-shadow: 0 0 0 2px var(--warning), 0 0 0 4px var(--base); }
   .comment-form label span, .comment-editor-label span { color: #d4d4d4; }
 }

@@ -20,6 +20,10 @@ const ADD_INPROGRESS_STATUS_DOWN_SQL: &str =
 const ADD_COMMENTS_UP_SQL: &str = include_str!("../migrations/20260518130000_add_comments.up.sql");
 const ADD_COMMENTS_DOWN_SQL: &str =
     include_str!("../migrations/20260518130000_add_comments.down.sql");
+const ADD_COMMENT_UPVOTES_UP_SQL: &str =
+    include_str!("../migrations/20260518140000_add_comment_upvotes.up.sql");
+const ADD_COMMENT_UPVOTES_DOWN_SQL: &str =
+    include_str!("../migrations/20260518140000_add_comment_upvotes.down.sql");
 
 fn embedded_migrator() -> Migrator {
     Migrator {
@@ -65,6 +69,20 @@ fn embedded_migrator() -> Migrator {
                 MigrationType::ReversibleDown,
                 Cow::Borrowed(ADD_COMMENTS_DOWN_SQL),
                 ADD_COMMENTS_DOWN_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260518140000,
+                Cow::Borrowed("add_comment_upvotes"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(ADD_COMMENT_UPVOTES_UP_SQL),
+                ADD_COMMENT_UPVOTES_UP_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260518140000,
+                Cow::Borrowed("add_comment_upvotes"),
+                MigrationType::ReversibleDown,
+                Cow::Borrowed(ADD_COMMENT_UPVOTES_DOWN_SQL),
+                ADD_COMMENT_UPVOTES_DOWN_SQL.starts_with("-- no-transaction"),
             ),
         ]),
         ..Migrator::DEFAULT
@@ -717,6 +735,36 @@ impl Store {
         self.idea(idea_id, Some(user_id), viewer_is_moderator).await
     }
 
+    pub async fn set_comment_upvote(
+        &self,
+        comment_id: Uuid,
+        user_id: Uuid,
+        upvoted: bool,
+        viewer_is_moderator: bool,
+    ) -> Result<Comment> {
+        if !self.comment_exists(comment_id).await? {
+            return Err(StorageError::NotFound("comment"));
+        }
+
+        if upvoted {
+            sqlx::query(
+                "INSERT OR IGNORE INTO comment_upvotes (comment_id, user_id) VALUES (?, ?)",
+            )
+            .bind(comment_id.to_string())
+            .bind(user_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        } else {
+            sqlx::query("DELETE FROM comment_upvotes WHERE comment_id = ? AND user_id = ?")
+                .bind(comment_id.to_string())
+                .bind(user_id.to_string())
+                .execute(&self.pool)
+                .await?;
+        }
+        self.comment(comment_id, Some(user_id), viewer_is_moderator)
+            .await
+    }
+
     pub async fn list_comments(
         &self,
         idea_id: Uuid,
@@ -728,28 +776,39 @@ impl Store {
         }
         let viewer = viewer_id.map(|id| id.to_string());
         let moderator = i64::from(viewer_is_moderator);
-        let rows = sqlx::query(
+        let (comment_upvote_select_sql, comment_upvote_join_sql) =
+            self.comment_upvote_sql().await?;
+        let sql = format!(
             "SELECT c.id, c.idea_id, c.body, c.created_at, c.updated_at,
                     u.login, u.avatar_url,
+                    {comment_upvote_select_sql},
                     CASE WHEN (? IS NOT NULL AND c.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit,
                     CASE WHEN ((? IS NOT NULL AND c.author_user_id = ?) OR ? = 1) THEN 1 ELSE 0 END AS viewer_can_delete
              FROM comments c
              JOIN users u ON u.id = c.author_user_id
+             {comment_upvote_join_sql}
              WHERE c.idea_id = ?
-             ORDER BY c.created_at ASC",
-        )
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(moderator)
-        .bind(idea_id.to_string())
-        .fetch_all(&self.pool)
-        .await?;
-        rows.into_iter()
+             GROUP BY c.id
+             ORDER BY c.created_at ASC"
+        );
+        let rows = sqlx::query(&sql)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(moderator)
+            .bind(idea_id.to_string())
+            .fetch_all(&self.pool)
+            .await?;
+        let mut comments = rows
+            .into_iter()
             .map(row_to_comment)
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(StorageError::Sqlx)
+            .map_err(StorageError::Sqlx)?;
+        promote_most_upvoted_comment(&mut comments);
+        Ok(comments)
     }
 
     pub async fn create_comment(
@@ -827,23 +886,31 @@ impl Store {
     ) -> Result<Comment> {
         let viewer = viewer_id.map(|id| id.to_string());
         let moderator = i64::from(viewer_is_moderator);
-        let row = sqlx::query(
+        let (comment_upvote_select_sql, comment_upvote_join_sql) =
+            self.comment_upvote_sql().await?;
+        let sql = format!(
             "SELECT c.id, c.idea_id, c.body, c.created_at, c.updated_at,
                     u.login, u.avatar_url,
+                    {comment_upvote_select_sql},
                     CASE WHEN (? IS NOT NULL AND c.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit,
                     CASE WHEN ((? IS NOT NULL AND c.author_user_id = ?) OR ? = 1) THEN 1 ELSE 0 END AS viewer_can_delete
              FROM comments c
              JOIN users u ON u.id = c.author_user_id
-             WHERE c.id = ?",
-        )
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(&viewer)
-        .bind(moderator)
-        .bind(id.to_string())
-        .fetch_optional(&self.pool)
-        .await?;
+             {comment_upvote_join_sql}
+             WHERE c.id = ?
+             GROUP BY c.id"
+        );
+        let row = sqlx::query(&sql)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(&viewer)
+            .bind(moderator)
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await?;
         row.map(row_to_comment)
             .transpose()
             .map_err(StorageError::Sqlx)?
@@ -858,6 +925,20 @@ impl Store {
         }
     }
 
+    async fn comment_upvote_sql(&self) -> Result<(&'static str, &'static str)> {
+        if self.comment_upvotes_table_exists().await? {
+            Ok((
+                "COUNT(cu.comment_id) AS upvote_count, MAX(CASE WHEN (? IS NOT NULL AND cu.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted",
+                "LEFT JOIN comment_upvotes cu ON cu.comment_id = c.id",
+            ))
+        } else {
+            Ok((
+                "CASE WHEN (? IS NOT NULL AND ? IS NOT NULL) THEN 0 ELSE 0 END AS upvote_count, 0 AS viewer_has_upvoted",
+                "",
+            ))
+        }
+    }
+
     async fn comments_table_exists(&self) -> Result<bool> {
         let exists: Option<i64> = sqlx::query_scalar(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'comments'",
@@ -867,8 +948,25 @@ impl Store {
         Ok(exists.is_some())
     }
 
+    async fn comment_upvotes_table_exists(&self) -> Result<bool> {
+        let exists: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'comment_upvotes'",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(exists.is_some())
+    }
+
     async fn idea_exists(&self, id: Uuid) -> Result<bool> {
         let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM ideas WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(exists.is_some())
+    }
+
+    async fn comment_exists(&self, id: Uuid) -> Result<bool> {
+        let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM comments WHERE id = ?")
             .bind(id.to_string())
             .fetch_optional(&self.pool)
             .await?;
@@ -908,6 +1006,8 @@ fn row_to_comment(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Comment, 
         idea_id: Uuid::parse_str(row.try_get::<String, _>("idea_id")?.as_str())
             .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
         body_text: row.try_get("body")?,
+        upvote_count: row.try_get("upvote_count")?,
+        viewer_has_upvoted: row.try_get::<i64, _>("viewer_has_upvoted")? == 1,
         viewer_can_edit: row.try_get::<i64, _>("viewer_can_edit")? == 1,
         viewer_can_delete: row.try_get::<i64, _>("viewer_can_delete")? == 1,
         author: PublicUser {
@@ -917,6 +1017,27 @@ fn row_to_comment(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Comment, 
         created_at: parse_dt(row.try_get("created_at")?),
         updated_at: parse_dt(row.try_get("updated_at")?),
     })
+}
+
+fn promote_most_upvoted_comment(comments: &mut Vec<Comment>) {
+    let Some((top_index, top_upvotes)) = comments
+        .iter()
+        .enumerate()
+        .filter(|(_, comment)| comment.upvote_count > 0)
+        .fold(None, |best, (index, comment)| match best {
+            Some((_, best_upvotes)) if best_upvotes >= comment.upvote_count => best,
+            _ => Some((index, comment.upvote_count)),
+        })
+    else {
+        return;
+    };
+
+    if top_upvotes == 0 || top_index == 0 {
+        return;
+    }
+
+    let top_comment = comments.remove(top_index);
+    comments.insert(0, top_comment);
 }
 
 #[cfg(test)]

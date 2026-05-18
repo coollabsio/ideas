@@ -71,6 +71,8 @@ pub struct Comment {
     pub id: Uuid,
     pub idea_id: Uuid,
     pub body_text: String,
+    pub upvote_count: i64,
+    pub viewer_has_upvoted: bool,
     pub viewer_can_edit: bool,
     pub viewer_can_delete: bool,
     pub author: PublicUser,
