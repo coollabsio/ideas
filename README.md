@@ -40,7 +40,7 @@ looking logged out.
 For backend-only iteration without building the frontend each time:
 
 ```bash
-IDEAS_SKIP_FRONTEND=1 cargo run -p ideas-server -- serve
+SKIP_FRONTEND=1 cargo run -p ideas-server -- serve
 ```
 
 Frontend dev server:
@@ -109,11 +109,12 @@ After the GitHub Release is created, download the artifact and run `./ideas --ve
 | `GITHUB_CLIENT_ID` | yes | GitHub OAuth/App client ID. |
 | `GITHUB_CLIENT_SECRET` | yes | GitHub OAuth/App client secret. |
 | `GITHUB_LOGIN_ENABLED` | no | Defaults to `true`; set `false` to disable login. |
+| `IDEAS_MODERATOR_LOGINS` | no | Comma-separated GitHub usernames allowed to close/reopen and delete any idea. Regular authors can edit/delete only their own ideas. |
 | `PUBLIC_BASE_URL` | yes | Public origin; callback is `/api/auth/callback`. |
 | `DB_PATH` | no | Defaults to `./data/ideas.db`; Docker sets `/app/data/ideas.db`. |
 | `HOST` | no | Defaults to `0.0.0.0`. |
 | `PORT` | no | Defaults to `4321`. |
-| `IDEAS_SKIP_FRONTEND` | no | Set `1` to skip frontend build in `cargo build`. |
+| `SKIP_FRONTEND` | no | Set `1` to skip frontend build in `cargo build`. |
 
 ### Coolify / Docker production env
 
@@ -123,6 +124,7 @@ Set these in Coolify:
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
 GITHUB_LOGIN_ENABLED=true
+IDEAS_MODERATOR_LOGINS=alice,bob
 PUBLIC_BASE_URL=https://ideas.example.com
 DB_PATH=/app/data/ideas.db
 HOST=0.0.0.0
@@ -144,6 +146,7 @@ Do **not** set `GITHUB_TOKEN`; the app does not need a GitHub PAT.
 - Session cookie stores only an opaque `sid`.
 - GitHub access tokens are used only during OAuth callback and are not persisted.
 - Mutating routes require `x-csrf-token` from `/api/me`.
+- Regular authors can edit and delete their own ideas, but only `IDEAS_MODERATOR_LOGINS` users can close/reopen ideas. Moderators can also delete any idea.
 - Upvotes are uniquely constrained by `(idea_id, user_id)`.
 - Global security headers are applied to API and static responses.
 - Login, idea creation, and upvote routes have in-memory rate limits.

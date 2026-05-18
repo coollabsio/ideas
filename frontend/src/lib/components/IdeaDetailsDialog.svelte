@@ -28,6 +28,9 @@
   $: titleLen = title.trim().length;
   $: bodyLen = body.trim().length;
   $: canEdit = Boolean(idea?.viewerCanEdit && csrfToken);
+  $: canDelete = Boolean(idea?.viewerCanDelete && csrfToken);
+  $: canClose = Boolean(idea?.viewerCanClose && csrfToken);
+  $: canManage = canEdit || canDelete || canClose;
   $: canSave = canEdit && titleLen >= TITLE_MIN && titleLen <= TITLE_MAX && bodyLen >= BODY_MIN && bodyLen <= BODY_MAX && !busy;
   $: createdDate = idea ? new Date(idea.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
   $: updatedDate = idea ? new Date(idea.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
@@ -53,7 +56,7 @@
   }
 
   async function toggleClosed() {
-    if (!idea || !canEdit || !csrfToken || busy) return;
+    if (!idea || !canClose || !csrfToken || busy) return;
     busy = true;
     error = '';
     try {
@@ -67,7 +70,7 @@
   }
 
   async function remove() {
-    if (!idea || !canEdit || !csrfToken || busy) return;
+    if (!idea || !canDelete || !csrfToken || busy) return;
     if (!confirm('Delete this idea? This cannot be undone.')) return;
     busy = true;
     error = '';
@@ -88,7 +91,7 @@
   <div class="modal idea-details-modal" role="dialog" aria-modal="true" aria-labelledby="idea-details-title">
     <header>
       <div>
-        <h2 id="idea-details-title">{canEdit ? 'Edit idea' : 'Idea details'}</h2>
+        <h2 id="idea-details-title">{canEdit ? 'Edit idea' : canManage ? 'Manage idea' : 'Idea details'}</h2>
         <p>
           By <strong>{idea.author.login}</strong> · {createdDate}
           {#if idea.updatedAt !== idea.createdAt} · updated {updatedDate}{/if}
@@ -110,8 +113,8 @@
         {#if error}<p class="error">{error}</p>{/if}
         <footer class="modal-actions">
           <div class="secondary-actions">
-            <button class="button button-ghost" type="button" disabled={busy} on:click={toggleClosed}>{idea.closed ? 'Reopen' : 'Close'} idea</button>
-            <button class="button button-danger" type="button" disabled={busy} on:click={remove}>Delete</button>
+            {#if canClose}<button class="button button-ghost" type="button" disabled={busy} on:click={toggleClosed}>{idea.closed ? 'Reopen' : 'Close'} idea</button>{/if}
+            {#if canDelete}<button class="button button-danger" type="button" disabled={busy} on:click={remove}>Delete</button>{/if}
           </div>
           <div class="primary-actions">
             <button class="button button-ghost" type="button" on:click={close}>Cancel</button>
@@ -127,6 +130,18 @@
         </div>
         <h3>{idea.title}</h3>
         <p>{idea.bodyText}</p>
+        {#if error}<p class="error">{error}</p>{/if}
+        {#if canDelete || canClose}
+          <footer class="modal-actions">
+            <div class="secondary-actions">
+              {#if canClose}<button class="button button-ghost" type="button" disabled={busy} on:click={toggleClosed}>{idea.closed ? 'Reopen' : 'Close'} idea</button>{/if}
+              {#if canDelete}<button class="button button-danger" type="button" disabled={busy} on:click={remove}>Delete</button>{/if}
+            </div>
+            <div class="primary-actions">
+              <button class="button button-ghost" type="button" on:click={close}>Cancel</button>
+            </div>
+          </footer>
+        {/if}
       </div>
     {/if}
   </div>

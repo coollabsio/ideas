@@ -15,7 +15,7 @@ use reqwest::Client;
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::SocketAddr,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -134,6 +134,7 @@ struct Config {
     github_login_enabled: bool,
     base_url: String,
     session_ttl_sec: i64,
+    moderator_logins: HashSet<String>,
 }
 
 impl Config {
@@ -145,12 +146,26 @@ impl Config {
             base_url: std::env::var("PUBLIC_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:4321".to_string()),
             session_ttl_sec: 7 * 24 * 3600,
+            moderator_logins: parse_login_list_env("IDEAS_MODERATOR_LOGINS"),
         }
     }
 
     fn secure_cookies(&self) -> bool {
         self.base_url.starts_with("https://")
     }
+
+    fn is_moderator(&self, login: &str) -> bool {
+        self.moderator_logins.contains(&login.to_ascii_lowercase())
+    }
+}
+
+fn parse_login_list_env(name: &str) -> HashSet<String> {
+    std::env::var(name)
+        .unwrap_or_default()
+        .split(',')
+        .map(|login| login.trim().to_ascii_lowercase())
+        .filter(|login| !login.is_empty())
+        .collect()
 }
 
 #[tokio::main]
@@ -514,8 +529,12 @@ async fn auth_logout(
 }
 
 async fn list_ideas(State(state): State<AppState>, jar: CookieJar) -> impl IntoResponse {
-    let viewer = get_session(&state, &jar).await.map(|s| s.user_id);
-    match state.store.list_ideas(viewer).await {
+    let session = get_session(&state, &jar).await;
+    let viewer = session.as_ref().map(|s| s.user_id);
+    let viewer_is_moderator = session
+        .as_ref()
+        .is_some_and(|s| state.config.is_moderator(&s.user.login));
+    match state.store.list_ideas(viewer, viewer_is_moderator).await {
         Ok(ideas) => Json(ideas).into_response(),
         Err(err) => {
             tracing::error!(?err, "failed to list ideas");
@@ -554,7 +573,12 @@ async fn create_idea(
     }
     match state
         .store
-        .create_idea(payload.title.trim(), payload.body.trim(), session.user_id)
+        .create_idea(
+            payload.title.trim(),
+            payload.body.trim(),
+            session.user_id,
+            state.config.is_moderator(&session.user.login),
+        )
         .await
     {
         Ok(idea) => (StatusCode::CREATED, Json(idea)).into_response(),
@@ -588,6 +612,7 @@ async fn update_idea(
             payload.title.trim(),
             payload.body.trim(),
             session.user_id,
+            state.config.is_moderator(&session.user.login),
         )
         .await
     {
@@ -618,9 +643,13 @@ async fn set_idea_status(
     if !csrf_ok(&headers, &session.csrf_token) {
         return (StatusCode::FORBIDDEN, "Bad CSRF token").into_response();
     }
+    let actor_is_moderator = state.config.is_moderator(&session.user.login);
+    if !actor_is_moderator {
+        return (StatusCode::FORBIDDEN, "Only moderators can close ideas").into_response();
+    }
     match state
         .store
-        .set_idea_closed(id, payload.closed, session.user_id)
+        .set_idea_closed(id, payload.closed, session.user_id, actor_is_moderator)
         .await
     {
         Ok(idea) => Json(idea).into_response(),
@@ -644,7 +673,15 @@ async fn delete_idea(
     if !csrf_ok(&headers, &session.csrf_token) {
         return (StatusCode::FORBIDDEN, "Bad CSRF token").into_response();
     }
-    match state.store.delete_idea(id, session.user_id).await {
+    match state
+        .store
+        .delete_idea(
+            id,
+            session.user_id,
+            state.config.is_moderator(&session.user.login),
+        )
+        .await
+    {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(ideas_storage::StorageError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
         Err(err) => {
@@ -689,7 +726,12 @@ async fn set_upvote(
     }
     match state
         .store
-        .set_upvote(id, session.user_id, payload.upvoted)
+        .set_upvote(
+            id,
+            session.user_id,
+            payload.upvoted,
+            state.config.is_moderator(&session.user.login),
+        )
         .await
     {
         Ok(idea) => Json(UpvoteResponse {
@@ -824,7 +866,7 @@ mod tests {
     use axum::{body::Body, http::Request, http::StatusCode};
     use ideas_storage::Store;
     use reqwest::Client;
-    use std::{sync::Arc, time::Duration};
+    use std::{collections::HashSet, sync::Arc, time::Duration};
     use tower::ServiceExt;
     use uuid::Uuid;
 
@@ -854,6 +896,7 @@ mod tests {
                 github_login_enabled: true,
                 base_url: base_url.to_string(),
                 session_ttl_sec: 3600,
+                moderator_logins: HashSet::new(),
             }),
             http: Client::new(),
             rate_limiter: Arc::new(RateLimiter::default()),
@@ -960,6 +1003,22 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[test]
+    fn moderator_login_matching_is_case_insensitive() {
+        let config = Config {
+            github_client_id: String::new(),
+            github_client_secret: String::new(),
+            github_login_enabled: true,
+            base_url: "http://localhost:4321".to_string(),
+            session_ttl_sec: 3600,
+            moderator_logins: HashSet::from(["alice".to_string()]),
+        };
+
+        assert!(config.is_moderator("Alice"));
+        assert!(config.is_moderator("ALICE"));
+        assert!(!config.is_moderator("bob"));
     }
 
     #[test]

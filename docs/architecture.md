@@ -5,6 +5,7 @@
 ## Source of truth
 
 - GitHub is used only for OAuth identity.
+- `IDEAS_MODERATOR_LOGINS` is a comma-separated list of GitHub usernames with moderation permission.
 - SQLite stores users, sessions, ideas, and upvotes.
 - No GitHub Issues, Discussions, reactions, PAT, or repository sync is required at runtime.
 
@@ -24,9 +25,15 @@ Routes:
 - `GET /api/ideas`
 - `POST /api/ideas`
 - `PATCH /api/ideas/:id`
-- `DELETE /api/ideas/:id`
-- `PATCH /api/ideas/:id/status`
+- `DELETE /api/ideas/:id` — authors for own ideas; moderators for any idea
+- `PATCH /api/ideas/:id/status` — moderators only
 - `POST /api/ideas/:id/upvote`
+
+Authorization:
+
+- Idea authors can edit and delete their own ideas.
+- Idea authors cannot close/reopen ideas unless their GitHub login is in `IDEAS_MODERATOR_LOGINS`.
+- Moderators can close/reopen and delete any idea.
 
 ## Database
 

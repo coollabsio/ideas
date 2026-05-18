@@ -1,7 +1,6 @@
 use std::{env, fs, path::Path, process::Command};
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=IDEAS_SKIP_FRONTEND");
     println!("cargo:rerun-if-env-changed=SKIP_FRONTEND");
     println!("cargo:rerun-if-changed=../../frontend/package.json");
     println!("cargo:rerun-if-changed=../../frontend/bun.lock");
@@ -15,9 +14,7 @@ fn main() {
     let frontend = manifest.join("../../frontend");
     let build = frontend.join("build");
 
-    if env::var("IDEAS_SKIP_FRONTEND").as_deref() == Ok("1")
-        || env::var("SKIP_FRONTEND").as_deref() == Ok("1")
-    {
+    if env::var("SKIP_FRONTEND").as_deref() == Ok("1") {
         fs::create_dir_all(&build).expect("create skipped frontend build dir");
         fs::write(build.join("200.html"), "<div id=app></div>")
             .expect("write placeholder frontend");

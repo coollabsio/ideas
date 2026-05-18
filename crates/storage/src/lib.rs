@@ -191,7 +191,7 @@ impl Store {
         }
 
         let mut ideas_by_title: HashMap<String, Idea> = self
-            .list_ideas(None)
+            .list_ideas(None, false)
             .await?
             .into_iter()
             .map(|idea| (idea.title.clone(), idea))
@@ -207,14 +207,15 @@ impl Store {
                 idea
             } else {
                 let idea = self
-                    .create_idea(seed_idea.title, seed_idea.body, author.id)
+                    .create_idea(seed_idea.title, seed_idea.body, author.id, false)
                     .await?;
                 ideas_by_title.insert(seed_idea.title.to_string(), idea.clone());
                 idea
             };
 
             if seed_idea.closed && !idea.closed {
-                if let Ok(closed_idea) = self.set_idea_closed(idea.id, true, author.id).await {
+                if let Ok(closed_idea) = self.set_idea_closed(idea.id, true, author.id, true).await
+                {
                     idea = closed_idea;
                 }
             }
@@ -222,7 +223,7 @@ impl Store {
             seeded_idea_ids.insert(idea.id);
             for login in seed_idea.upvoter_logins {
                 let voter = users.get(login).expect("seed idea voter exists");
-                self.set_upvote(idea.id, voter.id, true).await?;
+                self.set_upvote(idea.id, voter.id, true, false).await?;
                 seeded_upvotes += 1;
             }
         }
@@ -366,7 +367,13 @@ impl Store {
         Ok(())
     }
 
-    pub async fn create_idea(&self, title: &str, body: &str, author_id: Uuid) -> Result<Idea> {
+    pub async fn create_idea(
+        &self,
+        title: &str,
+        body: &str,
+        author_id: Uuid,
+        author_is_moderator: bool,
+    ) -> Result<Idea> {
         let id = Uuid::new_v4();
         sqlx::query("INSERT INTO ideas (id, title, body, author_user_id, status) VALUES (?, ?, ?, ?, 'open')")
             .bind(id.to_string())
@@ -375,18 +382,38 @@ impl Store {
             .bind(author_id.to_string())
             .execute(&self.pool)
             .await?;
-        self.idea(id, Some(author_id)).await
+        self.idea(id, Some(author_id), author_is_moderator).await
     }
 
-    pub async fn list_ideas(&self, viewer_id: Option<Uuid>) -> Result<Vec<Idea>> {
+    pub async fn list_ideas(
+        &self,
+        viewer_id: Option<Uuid>,
+        viewer_is_moderator: bool,
+    ) -> Result<Vec<Idea>> {
         let viewer = viewer_id.map(|id| id.to_string());
+        let moderator = i64::from(viewer_is_moderator);
         let rows = sqlx::query(
-            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,\n                    u.login, u.avatar_url,\n                    COUNT(v.idea_id) AS upvote_count,\n                    MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted,\n                    CASE WHEN (? IS NOT NULL AND i.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit\n             FROM ideas i\n             JOIN users u ON u.id = i.author_user_id\n             LEFT JOIN upvotes v ON v.idea_id = i.id\n             GROUP BY i.id\n             ORDER BY upvote_count DESC, i.created_at DESC",
+            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,
+                    u.login, u.avatar_url,
+                    COUNT(v.idea_id) AS upvote_count,
+                    MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted,
+                    CASE WHEN (? IS NOT NULL AND i.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit,
+                    CASE WHEN ((? IS NOT NULL AND i.author_user_id = ?) OR ? = 1) THEN 1 ELSE 0 END AS viewer_can_delete,
+                    CASE WHEN ? = 1 THEN 1 ELSE 0 END AS viewer_can_close
+             FROM ideas i
+             JOIN users u ON u.id = i.author_user_id
+             LEFT JOIN upvotes v ON v.idea_id = i.id
+             GROUP BY i.id
+             ORDER BY upvote_count DESC, i.created_at DESC",
         )
         .bind(&viewer)
         .bind(&viewer)
         .bind(&viewer)
         .bind(&viewer)
+        .bind(&viewer)
+        .bind(&viewer)
+        .bind(moderator)
+        .bind(moderator)
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter()
@@ -395,15 +422,36 @@ impl Store {
             .map_err(StorageError::Sqlx)
     }
 
-    pub async fn idea(&self, id: Uuid, viewer_id: Option<Uuid>) -> Result<Idea> {
+    pub async fn idea(
+        &self,
+        id: Uuid,
+        viewer_id: Option<Uuid>,
+        viewer_is_moderator: bool,
+    ) -> Result<Idea> {
         let viewer = viewer_id.map(|id| id.to_string());
+        let moderator = i64::from(viewer_is_moderator);
         let row = sqlx::query(
-            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,\n                    u.login, u.avatar_url,\n                    COUNT(v.idea_id) AS upvote_count,\n                    MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted,\n                    CASE WHEN (? IS NOT NULL AND i.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit\n             FROM ideas i\n             JOIN users u ON u.id = i.author_user_id\n             LEFT JOIN upvotes v ON v.idea_id = i.id\n             WHERE i.id = ?\n             GROUP BY i.id",
+            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,
+                    u.login, u.avatar_url,
+                    COUNT(v.idea_id) AS upvote_count,
+                    MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted,
+                    CASE WHEN (? IS NOT NULL AND i.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit,
+                    CASE WHEN ((? IS NOT NULL AND i.author_user_id = ?) OR ? = 1) THEN 1 ELSE 0 END AS viewer_can_delete,
+                    CASE WHEN ? = 1 THEN 1 ELSE 0 END AS viewer_can_close
+             FROM ideas i
+             JOIN users u ON u.id = i.author_user_id
+             LEFT JOIN upvotes v ON v.idea_id = i.id
+             WHERE i.id = ?
+             GROUP BY i.id",
         )
         .bind(&viewer)
         .bind(&viewer)
         .bind(&viewer)
         .bind(&viewer)
+        .bind(&viewer)
+        .bind(&viewer)
+        .bind(moderator)
+        .bind(moderator)
         .bind(id.to_string())
         .fetch_optional(&self.pool)
         .await?;
@@ -419,6 +467,7 @@ impl Store {
         title: &str,
         body: &str,
         actor_id: Uuid,
+        actor_is_moderator: bool,
     ) -> Result<Idea> {
         let changed = sqlx::query("UPDATE ideas SET title = ?, body = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND author_user_id = ?")
             .bind(title)
@@ -431,38 +480,65 @@ impl Store {
         if changed == 0 {
             return Err(StorageError::NotFound("idea"));
         }
-        self.idea(id, Some(actor_id)).await
+        self.idea(id, Some(actor_id), actor_is_moderator).await
     }
 
-    pub async fn set_idea_closed(&self, id: Uuid, closed: bool, actor_id: Uuid) -> Result<Idea> {
+    pub async fn set_idea_closed(
+        &self,
+        id: Uuid,
+        closed: bool,
+        actor_id: Uuid,
+        actor_is_moderator: bool,
+    ) -> Result<Idea> {
+        if !actor_is_moderator {
+            return Err(StorageError::NotFound("idea"));
+        }
         let status = if closed { "closed" } else { "open" };
-        let changed = sqlx::query("UPDATE ideas SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND author_user_id = ?")
+        let changed = sqlx::query("UPDATE ideas SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
             .bind(status)
             .bind(id.to_string())
-            .bind(actor_id.to_string())
             .execute(&self.pool)
             .await?
             .rows_affected();
         if changed == 0 {
             return Err(StorageError::NotFound("idea"));
         }
-        self.idea(id, Some(actor_id)).await
+        self.idea(id, Some(actor_id), actor_is_moderator).await
     }
 
-    pub async fn delete_idea(&self, id: Uuid, actor_id: Uuid) -> Result<()> {
-        let changed = sqlx::query("DELETE FROM ideas WHERE id = ? AND author_user_id = ?")
-            .bind(id.to_string())
-            .bind(actor_id.to_string())
-            .execute(&self.pool)
-            .await?
-            .rows_affected();
+    pub async fn delete_idea(
+        &self,
+        id: Uuid,
+        actor_id: Uuid,
+        actor_is_moderator: bool,
+    ) -> Result<()> {
+        let changed = if actor_is_moderator {
+            sqlx::query("DELETE FROM ideas WHERE id = ?")
+                .bind(id.to_string())
+                .execute(&self.pool)
+                .await?
+                .rows_affected()
+        } else {
+            sqlx::query("DELETE FROM ideas WHERE id = ? AND author_user_id = ?")
+                .bind(id.to_string())
+                .bind(actor_id.to_string())
+                .execute(&self.pool)
+                .await?
+                .rows_affected()
+        };
         if changed == 0 {
             return Err(StorageError::NotFound("idea"));
         }
         Ok(())
     }
 
-    pub async fn set_upvote(&self, idea_id: Uuid, user_id: Uuid, upvoted: bool) -> Result<Idea> {
+    pub async fn set_upvote(
+        &self,
+        idea_id: Uuid,
+        user_id: Uuid,
+        upvoted: bool,
+        viewer_is_moderator: bool,
+    ) -> Result<Idea> {
         if upvoted {
             sqlx::query("INSERT OR IGNORE INTO upvotes (idea_id, user_id) VALUES (?, ?)")
                 .bind(idea_id.to_string())
@@ -476,7 +552,7 @@ impl Store {
                 .execute(&self.pool)
                 .await?;
         }
-        self.idea(idea_id, Some(user_id)).await
+        self.idea(idea_id, Some(user_id), viewer_is_moderator).await
     }
 }
 
@@ -491,6 +567,8 @@ fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::
         upvote_count: row.try_get("upvote_count")?,
         viewer_has_upvoted: row.try_get::<i64, _>("viewer_has_upvoted")? == 1,
         viewer_can_edit: row.try_get::<i64, _>("viewer_can_edit")? == 1,
+        viewer_can_delete: row.try_get::<i64, _>("viewer_can_delete")? == 1,
+        viewer_can_close: row.try_get::<i64, _>("viewer_can_close")? == 1,
         author: PublicUser {
             login: row.try_get("login")?,
             avatar_url: row.try_get("avatar_url")?,
@@ -499,4 +577,142 @@ fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::
         updated_at: parse_dt(row.try_get("updated_at")?),
         closed: status == "closed",
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StorageError, Store};
+    use uuid::Uuid;
+
+    async fn test_store() -> Store {
+        let path = std::env::temp_dir().join(format!("ideas-storage-test-{}.db", Uuid::new_v4()));
+        let store = Store::connect(path.to_str().expect("utf8 temp path"))
+            .await
+            .expect("connect");
+        store.migrate().await.expect("migrate");
+        store
+    }
+
+    #[tokio::test]
+    async fn regular_author_can_edit_and_delete_but_cannot_close_own_idea() {
+        let store = test_store().await;
+        let author = store
+            .upsert_user(1, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let idea = store
+            .create_idea(
+                "A regular author idea",
+                "This is long enough body text for a valid idea.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("idea");
+
+        assert!(idea.viewer_can_edit);
+        assert!(idea.viewer_can_delete);
+        assert!(!idea.viewer_can_close);
+
+        let updated = store
+            .update_idea(
+                idea.id,
+                "A changed author idea",
+                "This updated body text remains long enough for a valid idea.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("update own idea");
+        assert_eq!(updated.title, "A changed author idea");
+
+        let close_error = store
+            .set_idea_closed(idea.id, true, author.id, false)
+            .await
+            .expect_err("regular author cannot close own idea");
+        assert!(matches!(close_error, StorageError::NotFound("idea")));
+
+        store
+            .delete_idea(idea.id, author.id, false)
+            .await
+            .expect("delete own idea");
+    }
+
+    #[tokio::test]
+    async fn moderator_can_close_and_delete_someone_elses_idea() {
+        let store = test_store().await;
+        let author = store
+            .upsert_user(2, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let moderator = store
+            .upsert_user(3, "moderator", "https://example.com/moderator.png")
+            .await
+            .expect("moderator");
+        let idea = store
+            .create_idea(
+                "A moderator managed idea",
+                "This is long enough body text for a valid idea.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("idea");
+
+        let viewed = store
+            .idea(idea.id, Some(moderator.id), true)
+            .await
+            .expect("moderator view");
+        assert!(!viewed.viewer_can_edit);
+        assert!(viewed.viewer_can_delete);
+        assert!(viewed.viewer_can_close);
+
+        let closed = store
+            .set_idea_closed(idea.id, true, moderator.id, true)
+            .await
+            .expect("moderator close");
+        assert!(closed.closed);
+        assert!(closed.viewer_can_close);
+
+        store
+            .delete_idea(idea.id, moderator.id, true)
+            .await
+            .expect("moderator delete");
+    }
+
+    #[tokio::test]
+    async fn non_author_cannot_delete_someone_elses_idea() {
+        let store = test_store().await;
+        let author = store
+            .upsert_user(4, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let other = store
+            .upsert_user(5, "other", "https://example.com/other.png")
+            .await
+            .expect("other");
+        let idea = store
+            .create_idea(
+                "Another user's idea",
+                "This is long enough body text for a valid idea.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("idea");
+
+        let viewed = store
+            .idea(idea.id, Some(other.id), false)
+            .await
+            .expect("other view");
+        assert!(!viewed.viewer_can_edit);
+        assert!(!viewed.viewer_can_delete);
+        assert!(!viewed.viewer_can_close);
+
+        let delete_error = store
+            .delete_idea(idea.id, other.id, false)
+            .await
+            .expect_err("non-author cannot delete");
+        assert!(matches!(delete_error, StorageError::NotFound("idea")));
+    }
 }

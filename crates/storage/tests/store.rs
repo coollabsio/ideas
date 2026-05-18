@@ -27,26 +27,27 @@ async fn creates_and_toggles_upvotes() {
             "A useful local idea",
             "This body is long enough to satisfy validation.",
             user.id,
+            false,
         )
         .await
         .expect("idea");
     assert_eq!(idea.upvote_count, 0);
 
     let voted = store
-        .set_upvote(idea.id, other.id, true)
+        .set_upvote(idea.id, other.id, true, false)
         .await
         .expect("vote");
     assert_eq!(voted.upvote_count, 1);
     assert!(voted.viewer_has_upvoted);
 
     let voted_again = store
-        .set_upvote(idea.id, other.id, true)
+        .set_upvote(idea.id, other.id, true, false)
         .await
         .expect("idempotent vote");
     assert_eq!(voted_again.upvote_count, 1);
 
     let unvoted = store
-        .set_upvote(idea.id, other.id, false)
+        .set_upvote(idea.id, other.id, false, false)
         .await
         .expect("unvote");
     assert_eq!(unvoted.upvote_count, 0);
@@ -70,25 +71,37 @@ async fn marks_whether_viewer_can_edit_idea() {
             "A useful local idea",
             "This body is long enough to satisfy validation.",
             author.id,
+            false,
         )
         .await
         .expect("idea");
     assert!(idea.viewer_can_edit);
+    assert!(idea.viewer_can_delete);
+    assert!(!idea.viewer_can_close);
 
     let author_view = store
-        .idea(idea.id, Some(author.id))
+        .idea(idea.id, Some(author.id), false)
         .await
         .expect("author view");
     assert!(author_view.viewer_can_edit);
+    assert!(author_view.viewer_can_delete);
+    assert!(!author_view.viewer_can_close);
 
     let other_view = store
-        .idea(idea.id, Some(other.id))
+        .idea(idea.id, Some(other.id), false)
         .await
         .expect("other view");
     assert!(!other_view.viewer_can_edit);
+    assert!(!other_view.viewer_can_delete);
+    assert!(!other_view.viewer_can_close);
 
-    let anonymous_view = store.idea(idea.id, None).await.expect("anonymous view");
+    let anonymous_view = store
+        .idea(idea.id, None, false)
+        .await
+        .expect("anonymous view");
     assert!(!anonymous_view.viewer_can_edit);
+    assert!(!anonymous_view.viewer_can_delete);
+    assert!(!anonymous_view.viewer_can_close);
 }
 
 #[tokio::test]
@@ -103,7 +116,7 @@ async fn dev_seed_is_repeatable() {
     assert_eq!(first.ideas, 6);
     assert_eq!(first.upvotes, 12);
 
-    let ideas = store.list_ideas(None).await.expect("ideas");
+    let ideas = store.list_ideas(None, false).await.expect("ideas");
     assert_eq!(ideas.len(), 6);
     assert!(ideas
         .iter()

@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUSTFLAGS: -D warnings
-      IDEAS_SKIP_FRONTEND: "1"
+      SKIP_FRONTEND: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

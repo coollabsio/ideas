@@ -10,6 +10,8 @@ export interface Idea {
   upvoteCount: number;
   viewerHasUpvoted: boolean;
   viewerCanEdit: boolean;
+  viewerCanDelete: boolean;
+  viewerCanClose: boolean;
   author: User;
   createdAt: string;
   updatedAt: string;

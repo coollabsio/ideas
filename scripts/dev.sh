@@ -51,7 +51,7 @@ frontend_pid=$!
     source "$ROOT/.env"
     set +a
   fi
-  exec env SKIP_FRONTEND=1 IDEAS_SKIP_FRONTEND=1 cargo watch \
+  exec env SKIP_FRONTEND=1 cargo watch \
     -w crates \
     -w Cargo.toml \
     -w Cargo.lock \

@@ -52,6 +52,8 @@ pub struct Idea {
     pub upvote_count: i64,
     pub viewer_has_upvoted: bool,
     pub viewer_can_edit: bool,
+    pub viewer_can_delete: bool,
+    pub viewer_can_close: bool,
     pub author: PublicUser,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
