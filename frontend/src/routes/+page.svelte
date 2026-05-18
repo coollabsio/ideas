@@ -1,44 +1,56 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { QueryObserver, useQueryClient, type QueryObserverResult } from '@tanstack/svelte-query';
+  import { readable } from 'svelte/store';
   import AuthSlot from '$lib/components/AuthSlot.svelte';
   import IdeaCard from '$lib/components/IdeaCard.svelte';
+  import IdeaDetailsDialog from '$lib/components/IdeaDetailsDialog.svelte';
   import NewIdeaDialog from '$lib/components/NewIdeaDialog.svelte';
-  import { fetchIdeas, fetchMe, logout, setUpvote, type Idea, type MeResponse } from '$lib/api';
+  import { ideaKeys, ideasQueryOptions, logout, meKeys, meQueryOptions, setUpvote, type Idea, type MeResponse } from '$lib/api';
 
-  let ideas: Idea[] = [];
-  let me: MeResponse = { user: null, csrfToken: null };
-  let loading = true;
-  let error = '';
+  const queryClient = useQueryClient();
+  const meQuery = queryResultStore<MeResponse>(meQueryOptions);
+  const ideasQuery = queryResultStore<Idea[]>(ideasQueryOptions);
+
+  let actionError = '';
   let dialogOpen = false;
+  let selectedIdea: Idea | null = null;
   let busyIdea: string | null = null;
 
+  $: ideas = sortIdeas($ideasQuery.data ?? []);
+  $: me = $meQuery.data ?? { user: null, csrfToken: null };
+  $: loading = $ideasQuery.isPending || $meQuery.isPending;
+  $: queryError = [$ideasQuery.error, $meQuery.error]
+    .filter(Boolean)
+    .map((err) => (err instanceof Error ? err.message : 'Could not load app data.'))
+    .join(' ');
+  $: error = actionError || queryError;
   $: openIdeas = ideas.filter((idea) => !idea.closed);
   $: closedIdeas = ideas.filter((idea) => idea.closed);
   $: totalUpvotes = ideas.reduce((sum, idea) => sum + idea.upvoteCount, 0);
-
-  onMount(async () => {
-    await Promise.all([loadMe(), loadIdeas()]);
-    loading = false;
-  });
-
-  async function loadMe() {
-    try {
-      me = await fetchMe();
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function loadIdeas() {
-    try {
-      ideas = await fetchIdeas();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Could not load ideas.';
-    }
+  $: if (selectedIdea) {
+    const refreshed = ideas.find((idea) => idea.id === selectedIdea?.id);
+    if (refreshed && refreshed !== selectedIdea) selectedIdea = refreshed;
   }
 
   function sortIdeas(next: Idea[]) {
     return [...next].sort((a, b) => b.upvoteCount - a.upvoteCount || b.createdAt.localeCompare(a.createdAt));
+  }
+
+  function queryResultStore<TData>(options: () => { queryKey: readonly unknown[]; queryFn: () => Promise<TData> }) {
+    const observer = new QueryObserver<TData, Error>(queryClient, options());
+    return readable<QueryObserverResult<TData, Error>>(observer.getCurrentResult(), (set) => {
+      const unsubscribe = observer.subscribe(set);
+      observer.updateResult();
+      return () => {
+        unsubscribe();
+        observer.destroy();
+      };
+    });
+  }
+
+  function setIdeas(updater: (current: Idea[]) => Idea[]) {
+    const current = queryClient.getQueryData<Idea[]>(ideaKeys.lists()) ?? [];
+    queryClient.setQueryData<Idea[]>(ideaKeys.lists(), sortIdeas(updater(current)));
   }
 
   async function toggleUpvote(idea: Idea) {
@@ -47,24 +59,42 @@
       return;
     }
     busyIdea = idea.id;
+    actionError = '';
     try {
       const updated = await setUpvote(idea.id, !idea.viewerHasUpvoted, me.csrfToken);
-      ideas = sortIdeas(ideas.map((item) => (item.id === updated.id ? updated : item)));
+      replaceIdea(updated);
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Could not update upvote.';
+      actionError = err instanceof Error ? err.message : 'Could not update upvote.';
     } finally {
       busyIdea = null;
     }
   }
 
   function ideaCreated(idea: Idea) {
-    ideas = sortIdeas([idea, ...ideas]);
+    setIdeas((current) => [idea, ...current]);
+  }
+
+  function replaceIdea(idea: Idea) {
+    setIdeas((current) => current.map((item) => (item.id === idea.id ? idea : item)));
+    if (selectedIdea?.id === idea.id) selectedIdea = idea;
+  }
+
+  function deleteLocalIdea(idea: Idea) {
+    setIdeas((current) => current.filter((item) => item.id !== idea.id));
+    if (selectedIdea?.id === idea.id) selectedIdea = null;
   }
 
   async function signOut() {
-    if (me.csrfToken) await logout(me.csrfToken);
-    me = { user: null, csrfToken: null };
-    await loadIdeas();
+    actionError = '';
+    try {
+      if (me.csrfToken) {
+        await logout(me.csrfToken);
+      }
+      queryClient.setQueryData<MeResponse>(meKeys.current(), { user: null, csrfToken: null });
+      await queryClient.invalidateQueries({ queryKey: ideaKeys.lists() });
+    } catch (err) {
+      actionError = err instanceof Error ? err.message : 'Could not sign out.';
+    }
   }
 </script>
 
@@ -109,7 +139,7 @@
     {:else}
       <div class="ideas-list">
         {#each openIdeas as idea (idea.id)}
-          <IdeaCard {idea} canVote={Boolean(me.user)} busy={busyIdea === idea.id} onToggle={toggleUpvote} />
+          <IdeaCard {idea} canVote={Boolean(me.user)} busy={busyIdea === idea.id} onToggle={toggleUpvote} onOpen={(item) => (selectedIdea = item)} />
         {/each}
       </div>
 
@@ -118,7 +148,7 @@
           <summary><span>▸</span> Closed ideas <small>({closedIdeas.length})</small></summary>
           <div class="ideas-list">
             {#each closedIdeas as idea (idea.id)}
-              <IdeaCard {idea} canVote={Boolean(me.user)} busy={busyIdea === idea.id} onToggle={toggleUpvote} />
+              <IdeaCard {idea} canVote={Boolean(me.user)} busy={busyIdea === idea.id} onToggle={toggleUpvote} onOpen={(item) => (selectedIdea = item)} />
             {/each}
           </div>
         </details>
@@ -132,3 +162,4 @@
 </div>
 
 <NewIdeaDialog open={dialogOpen} csrfToken={me.csrfToken ?? null} onClose={() => (dialogOpen = false)} onCreated={ideaCreated} />
+<IdeaDetailsDialog idea={selectedIdea} csrfToken={me.csrfToken ?? null} onClose={() => (selectedIdea = null)} onUpdated={replaceIdea} onDeleted={deleteLocalIdea} />

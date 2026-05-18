@@ -4,14 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "IDEAS_SKIP_FRONTEND=1 cargo run -p ideas-server -- serve",
+    "dev": "bash scripts/dev.sh",
     "build": "cargo build --release -p ideas-server",
     "db:migrate": "cargo run -p ideas-server -- db migrate",
     "db:revert": "cargo run -p ideas-server -- db revert",
     "db:info": "cargo run -p ideas-server -- db info",
     "frontend:dev": "cd frontend && bun run dev",
     "frontend:build": "cd frontend && bun run build",
-    "check": "cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test --all --all-features"
+    "check": "cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test --all --all-features",
+    "db:seed": "cargo run -p ideas-server -- db seed --db-path ./data/ideas-dev.db"
   },
   "packageManager": "bun@1.3.5"
 }

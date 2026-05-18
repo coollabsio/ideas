@@ -78,6 +78,7 @@ enum DbCommand {
     Migrate(DbArgs),
     Revert(DbArgs),
     Info(DbArgs),
+    Seed(DbArgs),
 }
 
 #[derive(Parser)]
@@ -194,6 +195,15 @@ async fn run_db(command: DbCommand) -> anyhow::Result<()> {
                     println!("{version}");
                 }
             }
+        }
+        DbCommand::Seed(args) => {
+            let store = Store::connect(&args.db_path).await?;
+            store.migrate().await?;
+            let report = store.seed_dev_examples().await?;
+            println!(
+                "seeded {} users, {} ideas, {} upvotes into {}",
+                report.users, report.ideas, report.upvotes, args.db_path
+            );
         }
     }
     Ok(())

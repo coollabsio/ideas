@@ -55,7 +55,7 @@
         <h2 id="new-idea-title">New idea</h2>
         <p>Submit a local idea. Your GitHub account is used only for identity.</p>
       </div>
-      <button class="icon-button" type="button" on:click={close} aria-label="Close">×</button>
+      <button class="button button-ghost icon-button" type="button" on:click={close} aria-label="Close">×</button>
     </header>
 
     <form on:submit|preventDefault={submit}>

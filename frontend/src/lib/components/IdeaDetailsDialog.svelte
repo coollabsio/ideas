@@ -1,0 +1,133 @@
+<script lang="ts">
+  import { deleteIdea, setIdeaStatus, updateIdea, type Idea } from '$lib/api';
+
+  export let idea: Idea | null = null;
+  export let csrfToken: string | null = null;
+  export let onClose: () => void;
+  export let onUpdated: (idea: Idea) => void;
+  export let onDeleted: (idea: Idea) => void;
+
+  let title = '';
+  let body = '';
+  let error = '';
+  let busy = false;
+  let loadedIdeaId: string | null = null;
+
+  const TITLE_MIN = 10;
+  const TITLE_MAX = 300;
+  const BODY_MIN = 30;
+  const BODY_MAX = 10000;
+
+  $: if (idea && idea.id !== loadedIdeaId) {
+    loadedIdeaId = idea.id;
+    title = idea.title;
+    body = idea.bodyText;
+    error = '';
+    busy = false;
+  }
+  $: titleLen = title.trim().length;
+  $: bodyLen = body.trim().length;
+  $: canEdit = Boolean(idea?.viewerCanEdit && csrfToken);
+  $: canSave = canEdit && titleLen >= TITLE_MIN && titleLen <= TITLE_MAX && bodyLen >= BODY_MIN && bodyLen <= BODY_MAX && !busy;
+  $: createdDate = idea ? new Date(idea.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+  $: updatedDate = idea ? new Date(idea.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+
+  function close() {
+    loadedIdeaId = null;
+    error = '';
+    onClose();
+  }
+
+  async function save() {
+    if (!idea || !canSave || !csrfToken) return;
+    busy = true;
+    error = '';
+    try {
+      const updated = await updateIdea(idea.id, title.trim(), body.trim(), csrfToken);
+      onUpdated(updated);
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Could not update idea.';
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function toggleClosed() {
+    if (!idea || !canEdit || !csrfToken || busy) return;
+    busy = true;
+    error = '';
+    try {
+      const updated = await setIdeaStatus(idea.id, !idea.closed, csrfToken);
+      onUpdated(updated);
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Could not update idea status.';
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function remove() {
+    if (!idea || !canEdit || !csrfToken || busy) return;
+    if (!confirm('Delete this idea? This cannot be undone.')) return;
+    busy = true;
+    error = '';
+    try {
+      await deleteIdea(idea.id, csrfToken);
+      onDeleted(idea);
+      close();
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Could not delete idea.';
+    } finally {
+      busy = false;
+    }
+  }
+</script>
+
+{#if idea}
+  <div class="modal-backdrop" role="presentation" on:click={close}></div>
+  <div class="modal idea-details-modal" role="dialog" aria-modal="true" aria-labelledby="idea-details-title">
+    <header>
+      <div>
+        <h2 id="idea-details-title">{canEdit ? 'Edit idea' : 'Idea details'}</h2>
+        <p>
+          By <strong>{idea.author.login}</strong> · {createdDate}
+          {#if idea.updatedAt !== idea.createdAt} · updated {updatedDate}{/if}
+        </p>
+      </div>
+      <button class="button button-ghost icon-button" type="button" on:click={close} aria-label="Close">×</button>
+    </header>
+
+    {#if canEdit}
+      <form on:submit|preventDefault={save}>
+        <label>
+          <span>Title <small>{titleLen}/{TITLE_MAX}</small></span>
+          <input class="input" bind:value={title} maxlength={TITLE_MAX} required />
+        </label>
+        <label>
+          <span>Body <small>{bodyLen}/{BODY_MAX}</small></span>
+          <textarea class="input textarea" bind:value={body} maxlength={BODY_MAX} required rows="10"></textarea>
+        </label>
+        {#if error}<p class="error">{error}</p>{/if}
+        <footer class="modal-actions">
+          <div class="secondary-actions">
+            <button class="button button-ghost" type="button" disabled={busy} on:click={toggleClosed}>{idea.closed ? 'Reopen' : 'Close'} idea</button>
+            <button class="button button-danger" type="button" disabled={busy} on:click={remove}>Delete</button>
+          </div>
+          <div class="primary-actions">
+            <button class="button button-ghost" type="button" on:click={close}>Cancel</button>
+            <button class="button button-highlighted" type="submit" disabled={!canSave}>{busy ? 'Saving…' : 'Save changes'}</button>
+          </div>
+        </footer>
+      </form>
+    {:else}
+      <div class="idea-details-readonly">
+        <div class="idea-details-status">
+          <span class="count">{idea.upvoteCount} upvotes</span>
+          {#if idea.closed}<span class="closed-badge">Closed</span>{/if}
+        </div>
+        <h3>{idea.title}</h3>
+        <p>{idea.bodyText}</p>
+      </div>
+    {/if}
+  </div>
+{/if}

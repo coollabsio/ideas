@@ -5,19 +5,27 @@
   export let canVote = false;
   export let busy = false;
   export let onToggle: (idea: Idea) => void;
+  export let onOpen: (idea: Idea) => void;
 
   $: excerpt = idea.bodyText.length > 240 ? `${idea.bodyText.slice(0, 240).trimEnd()}…` : idea.bodyText;
   $: date = new Date(idea.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onOpen(idea);
+    }
+  }
 </script>
 
-<article class="idea-card coolbox group" class:closed={idea.closed}>
+<div class="idea-card coolbox group" class:closed={idea.closed} role="button" tabindex="0" on:click={() => onOpen(idea)} on:keydown={handleKeydown} aria-label={`Open idea: ${idea.title}`}>
   <button
     class:active={idea.viewerHasUpvoted}
     class="upvote"
     type="button"
     disabled={busy}
     aria-label={idea.viewerHasUpvoted ? 'Remove upvote' : canVote ? 'Upvote' : 'Sign in to upvote'}
-    on:click={() => onToggle(idea)}
+    on:click|stopPropagation={() => onToggle(idea)}
   >
     <svg aria-hidden="true" viewBox="0 0 24 24" class="upvote-icon" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 5l-7 7M12 5l7 7M12 5v14" />
@@ -39,4 +47,4 @@
       {#if !canVote}<span aria-hidden="true">·</span><span>Sign in to vote</span>{/if}
     </footer>
   </div>
-</article>
+</div>

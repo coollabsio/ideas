@@ -9,6 +9,7 @@ export interface Idea {
   bodyText: string;
   upvoteCount: number;
   viewerHasUpvoted: boolean;
+  viewerCanEdit: boolean;
   author: User;
   createdAt: string;
   updatedAt: string;
@@ -18,6 +19,30 @@ export interface Idea {
 export interface MeResponse {
   user: User | null;
   csrfToken?: string | null;
+}
+
+export const meKeys = {
+  all: ['me'] as const,
+  current: () => [...meKeys.all, 'current'] as const
+};
+
+export const ideaKeys = {
+  all: ['ideas'] as const,
+  lists: () => [...ideaKeys.all, 'list'] as const
+};
+
+export function meQueryOptions() {
+  return {
+    queryKey: meKeys.current(),
+    queryFn: fetchMe
+  };
+}
+
+export function ideasQueryOptions() {
+  return {
+    queryKey: ideaKeys.lists(),
+    queryFn: fetchIdeas
+  };
 }
 
 export async function fetchMe(): Promise<MeResponse> {
@@ -41,6 +66,40 @@ export async function createIdea(title: string, body: string, csrfToken: string)
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+export async function updateIdea(id: string, title: string, body: string, csrfToken: string): Promise<Idea> {
+  const res = await fetch(`/api/ideas/${id}`, {
+    method: 'PATCH',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+    body: JSON.stringify({ title, body })
+  });
+  if (res.status === 401) window.location.href = '/api/auth/login';
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function setIdeaStatus(id: string, closed: boolean, csrfToken: string): Promise<Idea> {
+  const res = await fetch(`/api/ideas/${id}/status`, {
+    method: 'PATCH',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+    body: JSON.stringify({ closed })
+  });
+  if (res.status === 401) window.location.href = '/api/auth/login';
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function deleteIdea(id: string, csrfToken: string): Promise<void> {
+  const res = await fetch(`/api/ideas/${id}`, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+    headers: { 'x-csrf-token': csrfToken }
+  });
+  if (res.status === 401) window.location.href = '/api/auth/login';
+  if (!res.ok) throw new Error(await res.text());
 }
 
 export async function setUpvote(id: string, upvoted: boolean, csrfToken: string): Promise<Idea> {

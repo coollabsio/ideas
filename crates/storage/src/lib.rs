@@ -4,6 +4,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     Row, SqlitePool,
 };
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use thiserror::Error;
 use uuid::Uuid;
@@ -19,6 +20,95 @@ pub enum StorageError {
 }
 
 pub type Result<T> = std::result::Result<T, StorageError>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DevSeedReport {
+    pub users: usize,
+    pub ideas: usize,
+    pub upvotes: usize,
+}
+
+struct SeedUser {
+    github_id: i64,
+    login: &'static str,
+    avatar_url: &'static str,
+}
+
+struct SeedIdea {
+    title: &'static str,
+    body: &'static str,
+    author_login: &'static str,
+    upvoter_logins: &'static [&'static str],
+    closed: bool,
+}
+
+const DEV_SEED_USERS: &[SeedUser] = &[
+    SeedUser {
+        github_id: 90_000_001,
+        login: "coollabs",
+        avatar_url: "https://avatars.githubusercontent.com/u/90269785?v=4",
+    },
+    SeedUser {
+        github_id: 90_000_002,
+        login: "andras",
+        avatar_url: "https://avatars.githubusercontent.com/u/5845193?v=4",
+    },
+    SeedUser {
+        github_id: 90_000_003,
+        login: "demo-builder",
+        avatar_url: "https://avatars.githubusercontent.com/u/9919?v=4",
+    },
+    SeedUser {
+        github_id: 90_000_004,
+        login: "infra-friend",
+        avatar_url: "https://avatars.githubusercontent.com/u/69631?v=4",
+    },
+];
+
+const DEV_SEED_IDEAS: &[SeedIdea] = &[
+    SeedIdea {
+        title: "One-click status pages for Coolify services",
+        body: "Generate public status pages from existing Coolify resources, including incidents, uptime history, and subscriber notifications.",
+        author_login: "coollabs",
+        upvoter_logins: &["andras", "demo-builder", "infra-friend"],
+        closed: false,
+    },
+    SeedIdea {
+        title: "Self-hosted changelog and release notes hub",
+        body: "A small app for publishing product changelogs from Git tags, GitHub releases, and manually curated customer-facing updates.",
+        author_login: "andras",
+        upvoter_logins: &["coollabs", "demo-builder"],
+        closed: false,
+    },
+    SeedIdea {
+        title: "Cron monitor with dead man switch alerts",
+        body: "Track scheduled jobs by heartbeat URL and send alerts when backups, billing syncs, or maintenance tasks stop checking in.",
+        author_login: "infra-friend",
+        upvoter_logins: &["coollabs", "andras", "demo-builder"],
+        closed: false,
+    },
+    SeedIdea {
+        title: "Tiny hosted forms backend for static sites",
+        body: "Collect contact forms from static sites with spam controls, email forwarding, CSV export, and per-project API tokens.",
+        author_login: "demo-builder",
+        upvoter_logins: &["andras"],
+        closed: false,
+    },
+    SeedIdea {
+        title: "Environment variable diff viewer for deployments",
+        body: "Compare environment variables across staging and production without exposing secrets, highlighting missing keys and drift.",
+        author_login: "andras",
+        upvoter_logins: &["coollabs", "infra-friend"],
+        closed: false,
+    },
+    SeedIdea {
+        title: "Simple backup restore drill scheduler",
+        body: "Schedule recurring restore drills, record evidence, and remind teams to prove their backups can actually be restored.",
+        author_login: "infra-friend",
+        upvoter_logins: &["coollabs"],
+        closed: true,
+    },
+];
 
 #[derive(Clone)]
 pub struct Store {
@@ -89,6 +179,59 @@ impl Store {
         .await
         .unwrap_or_default();
         Ok(rows)
+    }
+
+    pub async fn seed_dev_examples(&self) -> Result<DevSeedReport> {
+        let mut users = HashMap::new();
+        for seed_user in DEV_SEED_USERS {
+            let user = self
+                .upsert_user(seed_user.github_id, seed_user.login, seed_user.avatar_url)
+                .await?;
+            users.insert(seed_user.login, user);
+        }
+
+        let mut ideas_by_title: HashMap<String, Idea> = self
+            .list_ideas(None)
+            .await?
+            .into_iter()
+            .map(|idea| (idea.title.clone(), idea))
+            .collect();
+        let mut seeded_idea_ids = HashSet::new();
+        let mut seeded_upvotes = 0;
+
+        for seed_idea in DEV_SEED_IDEAS {
+            let author = users
+                .get(seed_idea.author_login)
+                .expect("seed idea author exists");
+            let mut idea = if let Some(idea) = ideas_by_title.get(seed_idea.title).cloned() {
+                idea
+            } else {
+                let idea = self
+                    .create_idea(seed_idea.title, seed_idea.body, author.id)
+                    .await?;
+                ideas_by_title.insert(seed_idea.title.to_string(), idea.clone());
+                idea
+            };
+
+            if seed_idea.closed && !idea.closed {
+                if let Ok(closed_idea) = self.set_idea_closed(idea.id, true, author.id).await {
+                    idea = closed_idea;
+                }
+            }
+
+            seeded_idea_ids.insert(idea.id);
+            for login in seed_idea.upvoter_logins {
+                let voter = users.get(login).expect("seed idea voter exists");
+                self.set_upvote(idea.id, voter.id, true).await?;
+                seeded_upvotes += 1;
+            }
+        }
+
+        Ok(DevSeedReport {
+            users: DEV_SEED_USERS.len(),
+            ideas: seeded_idea_ids.len(),
+            upvotes: seeded_upvotes,
+        })
     }
 
     pub async fn sweep(&self) -> Result<()> {
@@ -238,8 +381,10 @@ impl Store {
     pub async fn list_ideas(&self, viewer_id: Option<Uuid>) -> Result<Vec<Idea>> {
         let viewer = viewer_id.map(|id| id.to_string());
         let rows = sqlx::query(
-            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,\n                    u.login, u.avatar_url,\n                    COUNT(v.idea_id) AS upvote_count,\n                    MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted\n             FROM ideas i\n             JOIN users u ON u.id = i.author_user_id\n             LEFT JOIN upvotes v ON v.idea_id = i.id\n             GROUP BY i.id\n             ORDER BY upvote_count DESC, i.created_at DESC",
+            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,\n                    u.login, u.avatar_url,\n                    COUNT(v.idea_id) AS upvote_count,\n                    MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted,\n                    CASE WHEN (? IS NOT NULL AND i.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit\n             FROM ideas i\n             JOIN users u ON u.id = i.author_user_id\n             LEFT JOIN upvotes v ON v.idea_id = i.id\n             GROUP BY i.id\n             ORDER BY upvote_count DESC, i.created_at DESC",
         )
+        .bind(&viewer)
+        .bind(&viewer)
         .bind(&viewer)
         .bind(&viewer)
         .fetch_all(&self.pool)
@@ -253,8 +398,10 @@ impl Store {
     pub async fn idea(&self, id: Uuid, viewer_id: Option<Uuid>) -> Result<Idea> {
         let viewer = viewer_id.map(|id| id.to_string());
         let row = sqlx::query(
-            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,\n                    u.login, u.avatar_url,\n                    COUNT(v.idea_id) AS upvote_count,\n                    MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted\n             FROM ideas i\n             JOIN users u ON u.id = i.author_user_id\n             LEFT JOIN upvotes v ON v.idea_id = i.id\n             WHERE i.id = ?\n             GROUP BY i.id",
+            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,\n                    u.login, u.avatar_url,\n                    COUNT(v.idea_id) AS upvote_count,\n                    MAX(CASE WHEN (? IS NOT NULL AND v.user_id = ?) THEN 1 ELSE 0 END) AS viewer_has_upvoted,\n                    CASE WHEN (? IS NOT NULL AND i.author_user_id = ?) THEN 1 ELSE 0 END AS viewer_can_edit\n             FROM ideas i\n             JOIN users u ON u.id = i.author_user_id\n             LEFT JOIN upvotes v ON v.idea_id = i.id\n             WHERE i.id = ?\n             GROUP BY i.id",
         )
+        .bind(&viewer)
+        .bind(&viewer)
         .bind(&viewer)
         .bind(&viewer)
         .bind(id.to_string())
@@ -343,6 +490,7 @@ fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::
         body_text: row.try_get("body")?,
         upvote_count: row.try_get("upvote_count")?,
         viewer_has_upvoted: row.try_get::<i64, _>("viewer_has_upvoted")? == 1,
+        viewer_can_edit: row.try_get::<i64, _>("viewer_can_edit")? == 1,
         author: PublicUser {
             login: row.try_get("login")?,
             avatar_url: row.try_get("avatar_url")?,

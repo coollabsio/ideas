@@ -14,20 +14,28 @@ GitHub is used only for sign-in. Ideas and upvotes are stored in local SQLite.
 ## Local development
 
 1. Create a GitHub OAuth app or GitHub App user authorization app.
-   - Homepage URL: `http://localhost:4321`
-   - Callback URL: `http://localhost:4321/api/auth/callback`
+   - Homepage URL: `http://127.0.0.1:5173`
+   - Callback URL: `http://127.0.0.1:5173/api/auth/callback`
 2. Copy env and fill values:
 
 ```bash
 cp .env.example .env
 ```
 
-3. Run migrations and server:
+3. Run migrations, optionally seed example ideas for local dev, and start the frontend + backend:
 
 ```bash
 cargo run -p ideas-server -- db migrate
-cargo run -p ideas-server -- serve
+cargo run -p ideas-server -- db seed --db-path ./data/ideas-dev.db
+bun run dev
 ```
+
+The seed command is idempotent and only creates reusable development data. Run it again whenever you want to restore the example users, ideas, and upvotes.
+
+Use the same host in the browser, `PUBLIC_BASE_URL`, and the GitHub callback URL.
+For the default Vite dev server, that host is `127.0.0.1`, not `localhost`;
+cookies are host-scoped, so mixing them can complete OAuth but leave the UI
+looking logged out.
 
 For backend-only iteration without building the frontend each time:
 
@@ -54,6 +62,7 @@ cargo build --release -p ideas-server
 
 ```bash
 ./target/release/ideas db migrate
+./target/release/ideas db seed --db-path ./data/ideas-dev.db
 ./target/release/ideas db revert
 ./target/release/ideas db info
 ```

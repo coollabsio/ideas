@@ -54,6 +54,64 @@ async fn creates_and_toggles_upvotes() {
 }
 
 #[tokio::test]
+async fn marks_whether_viewer_can_edit_idea() {
+    let store = test_store().await;
+    let author = store
+        .upsert_user(11, "author", "https://example.com/author.png")
+        .await
+        .expect("author");
+    let other = store
+        .upsert_user(12, "viewer", "https://example.com/viewer.png")
+        .await
+        .expect("other user");
+
+    let idea = store
+        .create_idea(
+            "A useful local idea",
+            "This body is long enough to satisfy validation.",
+            author.id,
+        )
+        .await
+        .expect("idea");
+    assert!(idea.viewer_can_edit);
+
+    let author_view = store
+        .idea(idea.id, Some(author.id))
+        .await
+        .expect("author view");
+    assert!(author_view.viewer_can_edit);
+
+    let other_view = store
+        .idea(idea.id, Some(other.id))
+        .await
+        .expect("other view");
+    assert!(!other_view.viewer_can_edit);
+
+    let anonymous_view = store.idea(idea.id, None).await.expect("anonymous view");
+    assert!(!anonymous_view.viewer_can_edit);
+}
+
+#[tokio::test]
+async fn dev_seed_is_repeatable() {
+    let store = test_store().await;
+
+    let first = store.seed_dev_examples().await.expect("first seed");
+    let second = store.seed_dev_examples().await.expect("second seed");
+
+    assert_eq!(first, second);
+    assert_eq!(first.users, 4);
+    assert_eq!(first.ideas, 6);
+    assert_eq!(first.upvotes, 12);
+
+    let ideas = store.list_ideas(None).await.expect("ideas");
+    assert_eq!(ideas.len(), 6);
+    assert!(ideas
+        .iter()
+        .any(|idea| idea.title == "Simple backup restore drill scheduler" && idea.closed));
+    assert!(ideas.iter().any(|idea| idea.upvote_count == 3));
+}
+
+#[tokio::test]
 async fn session_round_trip() {
     let store = test_store().await;
     let user = store
