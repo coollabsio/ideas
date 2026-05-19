@@ -48,8 +48,8 @@ const CONTENT_SECURITY_POLICY: &str = concat!(
     "frame-ancestors 'none'; ",
     "img-src 'self' https: data:; ",
     "style-src 'self' 'unsafe-inline'; ",
-    "script-src 'self' 'unsafe-inline'; ",
-    "connect-src 'self'; ",
+    "script-src 'self' 'unsafe-inline' https://analytics.coollabs.io; ",
+    "connect-src 'self' https://analytics.coollabs.io; ",
     "form-action 'self' https://github.com"
 );
 
