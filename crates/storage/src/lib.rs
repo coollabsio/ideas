@@ -391,7 +391,13 @@ impl Store {
                 idea
             } else {
                 let idea = self
-                    .create_idea(seed_idea.title, seed_idea.body, seed_idea.problem, author.id, false)
+                    .create_idea(
+                        seed_idea.title,
+                        seed_idea.body,
+                        seed_idea.problem,
+                        author.id,
+                        false,
+                    )
                     .await?;
                 ideas_by_title.insert(seed_idea.title.to_string(), idea.clone());
                 idea

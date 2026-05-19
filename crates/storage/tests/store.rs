@@ -74,14 +74,16 @@ async fn status_migration_preserves_upvotes_when_drop_cascades() {
     // Insert the idea under the original (pre-`problem`) schema, mirroring real
     // pre-migration data this test is meant to exercise.
     let idea_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO ideas (id, title, body, author_user_id, status) VALUES (?, ?, ?, ?, 'open')")
-        .bind(idea_id.to_string())
-        .bind("A migration safety idea")
-        .bind("This body is long enough to satisfy validation before migration.")
-        .bind(author.id.to_string())
-        .execute(store.pool())
-        .await
-        .expect("insert idea");
+    sqlx::query(
+        "INSERT INTO ideas (id, title, body, author_user_id, status) VALUES (?, ?, ?, ?, 'open')",
+    )
+    .bind(idea_id.to_string())
+    .bind("A migration safety idea")
+    .bind("This body is long enough to satisfy validation before migration.")
+    .bind(author.id.to_string())
+    .execute(store.pool())
+    .await
+    .expect("insert idea");
     store
         .set_upvote(idea_id, voter.id, true, false)
         .await
@@ -294,14 +296,16 @@ async fn comment_upvote_migration_preserves_existing_comments() {
     // Insert the idea under the old schema (before the `problem` column existed),
     // since this test exercises pre-migration data.
     let idea_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO ideas (id, title, body, author_user_id, status) VALUES (?, ?, ?, ?, 'open')")
-        .bind(idea_id.to_string())
-        .bind("A comment migration idea")
-        .bind("This body is long enough for a migration preservation test.")
-        .bind(author.id.to_string())
-        .execute(store.pool())
-        .await
-        .expect("insert idea");
+    sqlx::query(
+        "INSERT INTO ideas (id, title, body, author_user_id, status) VALUES (?, ?, ?, ?, 'open')",
+    )
+    .bind(idea_id.to_string())
+    .bind("A comment migration idea")
+    .bind("This body is long enough for a migration preservation test.")
+    .bind(author.id.to_string())
+    .execute(store.pool())
+    .await
+    .expect("insert idea");
     let comment = store
         .create_comment(idea_id, "Keep this existing comment.", author.id, false)
         .await
