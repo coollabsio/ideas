@@ -24,6 +24,10 @@ const ADD_COMMENT_UPVOTES_UP_SQL: &str =
     include_str!("../migrations/20260518140000_add_comment_upvotes.up.sql");
 const ADD_COMMENT_UPVOTES_DOWN_SQL: &str =
     include_str!("../migrations/20260518140000_add_comment_upvotes.down.sql");
+const ADD_IDEA_PROBLEM_UP_SQL: &str =
+    include_str!("../migrations/20260519120000_add_idea_problem.up.sql");
+const ADD_IDEA_PROBLEM_DOWN_SQL: &str =
+    include_str!("../migrations/20260519120000_add_idea_problem.down.sql");
 
 fn embedded_migrator() -> Migrator {
     Migrator {
@@ -83,6 +87,20 @@ fn embedded_migrator() -> Migrator {
                 MigrationType::ReversibleDown,
                 Cow::Borrowed(ADD_COMMENT_UPVOTES_DOWN_SQL),
                 ADD_COMMENT_UPVOTES_DOWN_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260519120000,
+                Cow::Borrowed("add_idea_problem"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(ADD_IDEA_PROBLEM_UP_SQL),
+                ADD_IDEA_PROBLEM_UP_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260519120000,
+                Cow::Borrowed("add_idea_problem"),
+                MigrationType::ReversibleDown,
+                Cow::Borrowed(ADD_IDEA_PROBLEM_DOWN_SQL),
+                ADD_IDEA_PROBLEM_DOWN_SQL.starts_with("-- no-transaction"),
             ),
         ]),
         ..Migrator::DEFAULT
@@ -196,6 +214,7 @@ struct SeedUser {
 struct SeedIdea {
     title: &'static str,
     body: &'static str,
+    problem: &'static str,
     author_login: &'static str,
     upvoter_logins: &'static [&'static str],
     closed: bool,
@@ -228,6 +247,7 @@ const DEV_SEED_IDEAS: &[SeedIdea] = &[
     SeedIdea {
         title: "One-click status pages for Coolify services",
         body: "Generate public status pages from existing Coolify resources, including incidents, uptime history, and subscriber notifications.",
+        problem: "Teams running Coolify have no built-in way to communicate outages. Hosted status pages like Statuspage are expensive and live outside the infrastructure they monitor.",
         author_login: "coollabs",
         upvoter_logins: &["andras", "demo-builder", "infra-friend"],
         closed: false,
@@ -235,6 +255,7 @@ const DEV_SEED_IDEAS: &[SeedIdea] = &[
     SeedIdea {
         title: "Self-hosted changelog and release notes hub",
         body: "A small app for publishing product changelogs from Git tags, GitHub releases, and manually curated customer-facing updates.",
+        problem: "Changelog SaaS tools are subscription-priced and lock content into their platform. Self-hosters want release notes that live next to their own app.",
         author_login: "andras",
         upvoter_logins: &["coollabs", "demo-builder"],
         closed: false,
@@ -242,6 +263,7 @@ const DEV_SEED_IDEAS: &[SeedIdea] = &[
     SeedIdea {
         title: "Cron monitor with dead man switch alerts",
         body: "Track scheduled jobs by heartbeat URL and send alerts when backups, billing syncs, or maintenance tasks stop checking in.",
+        problem: "Silent cron failures go unnoticed for days. Existing dead-man-switch services are hosted-only and bill per monitor, which adds up fast for self-hosters.",
         author_login: "infra-friend",
         upvoter_logins: &["coollabs", "andras", "demo-builder"],
         closed: false,
@@ -249,6 +271,7 @@ const DEV_SEED_IDEAS: &[SeedIdea] = &[
     SeedIdea {
         title: "Tiny hosted forms backend for static sites",
         body: "Collect contact forms from static sites with spam controls, email forwarding, CSV export, and per-project API tokens.",
+        problem: "Static sites cannot process form submissions on their own. Hosted form backends are priced per submission and keep customer data on third-party servers.",
         author_login: "demo-builder",
         upvoter_logins: &["andras"],
         closed: false,
@@ -256,6 +279,7 @@ const DEV_SEED_IDEAS: &[SeedIdea] = &[
     SeedIdea {
         title: "Environment variable diff viewer for deployments",
         body: "Compare environment variables across staging and production without exposing secrets, highlighting missing keys and drift.",
+        problem: "Config drift between environments causes hard-to-debug deploy failures. No lightweight tool diffs env vars without dumping secret values in plain text.",
         author_login: "andras",
         upvoter_logins: &["coollabs", "infra-friend"],
         closed: false,
@@ -263,6 +287,7 @@ const DEV_SEED_IDEAS: &[SeedIdea] = &[
     SeedIdea {
         title: "Simple backup restore drill scheduler",
         body: "Schedule recurring restore drills, record evidence, and remind teams to prove their backups can actually be restored.",
+        problem: "Backups are rarely tested until a real incident. No simple tool schedules restore drills and tracks evidence that recovery actually works.",
         author_login: "infra-friend",
         upvoter_logins: &["coollabs"],
         closed: true,
@@ -366,7 +391,7 @@ impl Store {
                 idea
             } else {
                 let idea = self
-                    .create_idea(seed_idea.title, seed_idea.body, author.id, false)
+                    .create_idea(seed_idea.title, seed_idea.body, seed_idea.problem, author.id, false)
                     .await?;
                 ideas_by_title.insert(seed_idea.title.to_string(), idea.clone());
                 idea
@@ -530,14 +555,16 @@ impl Store {
         &self,
         title: &str,
         body: &str,
+        problem: &str,
         author_id: Uuid,
         author_is_moderator: bool,
     ) -> Result<Idea> {
         let id = Uuid::new_v4();
-        sqlx::query("INSERT INTO ideas (id, title, body, author_user_id, status) VALUES (?, ?, ?, ?, 'open')")
+        sqlx::query("INSERT INTO ideas (id, title, body, problem, author_user_id, status) VALUES (?, ?, ?, ?, ?, 'open')")
             .bind(id.to_string())
             .bind(title)
             .bind(body)
+            .bind(problem)
             .bind(author_id.to_string())
             .execute(&self.pool)
             .await?;
@@ -553,7 +580,7 @@ impl Store {
         let moderator = i64::from(viewer_is_moderator);
         let comment_count_sql = self.comment_count_sql().await?;
         let sql = format!(
-            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,
+            "SELECT i.id, i.title, i.body, i.problem, i.status, i.created_at, i.updated_at,
                     u.login, u.avatar_url,
                     COUNT(v.idea_id) AS upvote_count,
                     {comment_count_sql} AS comment_count,
@@ -594,7 +621,7 @@ impl Store {
         let moderator = i64::from(viewer_is_moderator);
         let comment_count_sql = self.comment_count_sql().await?;
         let sql = format!(
-            "SELECT i.id, i.title, i.body, i.status, i.created_at, i.updated_at,
+            "SELECT i.id, i.title, i.body, i.problem, i.status, i.created_at, i.updated_at,
                     u.login, u.avatar_url,
                     COUNT(v.idea_id) AS upvote_count,
                     {comment_count_sql} AS comment_count,
@@ -631,12 +658,14 @@ impl Store {
         id: Uuid,
         title: &str,
         body: &str,
+        problem: &str,
         actor_id: Uuid,
         actor_is_moderator: bool,
     ) -> Result<Idea> {
-        let changed = sqlx::query("UPDATE ideas SET title = ?, body = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND author_user_id = ?")
+        let changed = sqlx::query("UPDATE ideas SET title = ?, body = ?, problem = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND author_user_id = ?")
             .bind(title)
             .bind(body)
+            .bind(problem)
             .bind(id.to_string())
             .bind(actor_id.to_string())
             .execute(&self.pool)
@@ -982,6 +1011,7 @@ fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::
         id,
         title: row.try_get("title")?,
         body_text: row.try_get("body")?,
+        problem: row.try_get("problem")?,
         upvote_count: row.try_get("upvote_count")?,
         comment_count: row.try_get("comment_count")?,
         viewer_has_upvoted: row.try_get::<i64, _>("viewer_has_upvoted")? == 1,
@@ -1065,6 +1095,7 @@ mod tests {
             .create_idea(
                 "A regular author idea",
                 "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
                 author.id,
                 false,
             )
@@ -1080,6 +1111,7 @@ mod tests {
                 idea.id,
                 "A changed author idea",
                 "This updated body text remains long enough for a valid idea.",
+                "This updated problem statement is long enough to pass validation.",
                 author.id,
                 false,
             )
@@ -1114,6 +1146,7 @@ mod tests {
             .create_idea(
                 "A moderator managed idea",
                 "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
                 author.id,
                 false,
             )
@@ -1156,6 +1189,7 @@ mod tests {
             .create_idea(
                 "An idea ready for progress",
                 "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
                 author.id,
                 false,
             )
@@ -1185,6 +1219,7 @@ mod tests {
             .create_idea(
                 "A regular author idea",
                 "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
                 author.id,
                 false,
             )
@@ -1213,6 +1248,7 @@ mod tests {
             .create_idea(
                 "A commentable idea",
                 "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
                 author.id,
                 false,
             )
@@ -1266,6 +1302,7 @@ mod tests {
             .create_idea(
                 "Another commentable idea",
                 "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
                 author.id,
                 false,
             )
@@ -1314,6 +1351,7 @@ mod tests {
             .create_idea(
                 "Another user's idea",
                 "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
                 author.id,
                 false,
             )

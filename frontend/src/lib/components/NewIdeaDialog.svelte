@@ -11,6 +11,7 @@
 
   let title = '';
   let body = '';
+  let problem = '';
   let error = '';
   let submitting = false;
 
@@ -18,15 +19,19 @@
   const TITLE_MAX = 300;
   const BODY_MIN = 30;
   const BODY_MAX = 10000;
+  const PROBLEM_MIN = 30;
+  const PROBLEM_MAX = 2000;
 
   $: titleLen = title.trim().length;
   $: bodyLen = body.trim().length;
-  $: canSubmit = Boolean(csrfToken) && titleLen >= TITLE_MIN && titleLen <= TITLE_MAX && bodyLen >= BODY_MIN && bodyLen <= BODY_MAX && !submitting;
+  $: problemLen = problem.trim().length;
+  $: canSubmit = Boolean(csrfToken) && titleLen >= TITLE_MIN && titleLen <= TITLE_MAX && bodyLen >= BODY_MIN && bodyLen <= BODY_MAX && problemLen >= PROBLEM_MIN && problemLen <= PROBLEM_MAX && !submitting;
   $: similarIdeas = findSimilarIdeas(title, body, ideas);
 
   function reset() {
     title = '';
     body = '';
+    problem = '';
     error = '';
   }
 
@@ -49,7 +54,7 @@
     submitting = true;
     error = '';
     try {
-      const idea = await createIdea(title.trim(), body.trim(), csrfToken);
+      const idea = await createIdea(title.trim(), body.trim(), problem.trim(), csrfToken);
       onCreated(idea);
       close();
     } catch (err) {
@@ -97,6 +102,10 @@
       <label>
         <span>Body <small>{bodyLen}/{BODY_MAX}</small></span>
         <textarea class="input textarea" bind:value={body} maxlength={BODY_MAX} required rows="8" placeholder="Describe what this should do and why it is useful."></textarea>
+      </label>
+      <label>
+        <span>What problem does this solve? <small>{problemLen}/{PROBLEM_MAX}</small></span>
+        <textarea class="input textarea" bind:value={problem} maxlength={PROBLEM_MAX} required rows="5" placeholder="Explain the problem and why an alternative is needed — what is missing or insufficient in existing tools."></textarea>
       </label>
       {#if error}<p class="error">{error}</p>{/if}
       <footer>

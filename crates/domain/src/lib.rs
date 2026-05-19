@@ -52,6 +52,7 @@ pub struct Idea {
     pub id: Uuid,
     pub title: String,
     pub body_text: String,
+    pub problem: String,
     pub upvote_count: i64,
     pub comment_count: i64,
     pub viewer_has_upvoted: bool,
@@ -95,4 +96,5 @@ pub struct Session {
 pub struct NewIdea {
     pub title: String,
     pub body: String,
+    pub problem: String,
 }

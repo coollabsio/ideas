@@ -8,6 +8,8 @@ const INIT_UP_SQL: &str = include_str!("../migrations/20260507120000_init.up.sql
 const ADD_INPROGRESS_STATUS_UP_SQL: &str =
     include_str!("../migrations/20260518120000_add_inprogress_status.up.sql");
 const ADD_COMMENTS_UP_SQL: &str = include_str!("../migrations/20260518130000_add_comments.up.sql");
+const ADD_IDEA_PROBLEM_UP_SQL: &str =
+    include_str!("../migrations/20260519120000_add_idea_problem.up.sql");
 
 const ORIGINAL_ADD_INPROGRESS_STATUS_UP_SQL: &str = r#"-- no-transaction
 PRAGMA foreign_keys = OFF;
@@ -54,6 +56,12 @@ async fn status_migration_preserves_upvotes_when_drop_cascades() {
         .execute(store.pool())
         .await
         .expect("init schema");
+    // `Store::idea` (used by `set_upvote`) selects the `problem` column, so the
+    // column must exist before any store call, even pre-`add_inprogress_status`.
+    sqlx::raw_sql(ADD_IDEA_PROBLEM_UP_SQL)
+        .execute(store.pool())
+        .await
+        .expect("add idea problem column");
 
     let author = store
         .upsert_user(101, "author", "https://example.com/author.png")
@@ -63,17 +71,19 @@ async fn status_migration_preserves_upvotes_when_drop_cascades() {
         .upsert_user(102, "voter", "https://example.com/voter.png")
         .await
         .expect("voter");
-    let idea = store
-        .create_idea(
-            "A migration safety idea",
-            "This body is long enough to satisfy validation before migration.",
-            author.id,
-            false,
-        )
+    // Insert the idea under the original (pre-`problem`) schema, mirroring real
+    // pre-migration data this test is meant to exercise.
+    let idea_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO ideas (id, title, body, author_user_id, status) VALUES (?, ?, ?, ?, 'open')")
+        .bind(idea_id.to_string())
+        .bind("A migration safety idea")
+        .bind("This body is long enough to satisfy validation before migration.")
+        .bind(author.id.to_string())
+        .execute(store.pool())
         .await
-        .expect("idea");
+        .expect("insert idea");
     store
-        .set_upvote(idea.id, voter.id, true, false)
+        .set_upvote(idea_id, voter.id, true, false)
         .await
         .expect("upvote before migration");
 
@@ -83,9 +93,22 @@ async fn status_migration_preserves_upvotes_when_drop_cascades() {
         .execute(store.pool())
         .await
         .expect("status migration");
+    // The status migration recreates the `ideas` table; re-add `problem` if the
+    // recreated table dropped it, so `Store::idea` can select the column.
+    let has_problem: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM pragma_table_info('ideas') WHERE name = 'problem'")
+            .fetch_optional(store.pool())
+            .await
+            .expect("check problem column");
+    if has_problem.is_none() {
+        sqlx::raw_sql(ADD_IDEA_PROBLEM_UP_SQL)
+            .execute(store.pool())
+            .await
+            .expect("add idea problem column");
+    }
 
     let migrated = store
-        .idea(idea.id, Some(voter.id), false)
+        .idea(idea_id, Some(voter.id), false)
         .await
         .expect("migrated idea");
     assert_eq!(migrated.upvote_count, 1);
@@ -195,6 +218,7 @@ async fn creates_and_toggles_upvotes() {
         .create_idea(
             "A useful local idea",
             "This body is long enough to satisfy validation.",
+            "This problem statement is long enough to satisfy validation.",
             user.id,
             false,
         )
@@ -267,24 +291,26 @@ async fn comment_upvote_migration_preserves_existing_comments() {
         .upsert_user(201, "author", "https://example.com/author.png")
         .await
         .expect("author");
-    let idea = store
-        .create_idea(
-            "A comment migration idea",
-            "This body is long enough for a migration preservation test.",
-            author.id,
-            false,
-        )
+    // Insert the idea under the old schema (before the `problem` column existed),
+    // since this test exercises pre-migration data.
+    let idea_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO ideas (id, title, body, author_user_id, status) VALUES (?, ?, ?, ?, 'open')")
+        .bind(idea_id.to_string())
+        .bind("A comment migration idea")
+        .bind("This body is long enough for a migration preservation test.")
+        .bind(author.id.to_string())
+        .execute(store.pool())
         .await
-        .expect("idea");
+        .expect("insert idea");
     let comment = store
-        .create_comment(idea.id, "Keep this existing comment.", author.id, false)
+        .create_comment(idea_id, "Keep this existing comment.", author.id, false)
         .await
         .expect("comment before migration");
 
     store.migrate().await.expect("comment upvote migration");
 
     let comments = store
-        .list_comments(idea.id, Some(author.id), false)
+        .list_comments(idea_id, Some(author.id), false)
         .await
         .expect("comments after migration");
     assert_eq!(comments.len(), 1);
@@ -309,6 +335,7 @@ async fn creates_and_toggles_comment_upvotes() {
         .create_idea(
             "A comment upvote idea",
             "This body is long enough for a comment upvote test.",
+            "This problem statement is long enough to satisfy validation.",
             author.id,
             false,
         )
@@ -357,6 +384,7 @@ async fn list_comments_promotes_only_the_most_upvoted_comment() {
         .create_idea(
             "A sorted comment idea",
             "This body is long enough for a sorted comment list test.",
+            "This problem statement is long enough to satisfy validation.",
             author.id,
             false,
         )
@@ -417,6 +445,7 @@ async fn marks_whether_viewer_can_edit_idea() {
         .create_idea(
             "A useful local idea",
             "This body is long enough to satisfy validation.",
+            "This problem statement is long enough to satisfy validation.",
             author.id,
             false,
         )

@@ -29,6 +29,8 @@ const TITLE_MIN: usize = 10;
 const TITLE_MAX: usize = 300;
 const BODY_MIN: usize = 30;
 const BODY_MAX: usize = 10_000;
+const PROBLEM_MIN: usize = 30;
+const PROBLEM_MAX: usize = 2_000;
 const AUTH_LOGIN_LIMIT: u32 = 10;
 const AUTH_LOGIN_WINDOW: Duration = Duration::from_secs(60);
 const CREATE_IDEA_LIMIT: u32 = 5;
@@ -560,6 +562,7 @@ async fn list_ideas(State(state): State<AppState>, jar: CookieJar) -> impl IntoR
 struct IdeaBody {
     title: String,
     body: String,
+    problem: String,
 }
 
 async fn create_idea(
@@ -581,7 +584,7 @@ async fn create_idea(
     if !csrf_ok(&headers, &session.csrf_token) {
         return (StatusCode::FORBIDDEN, "Bad CSRF token").into_response();
     }
-    if let Err(msg) = validate_idea(&payload.title, &payload.body) {
+    if let Err(msg) = validate_idea(&payload.title, &payload.body, &payload.problem) {
         return (StatusCode::BAD_REQUEST, msg).into_response();
     }
     match state
@@ -589,6 +592,7 @@ async fn create_idea(
         .create_idea(
             payload.title.trim(),
             payload.body.trim(),
+            payload.problem.trim(),
             session.user_id,
             state.config.is_moderator(&session.user.login),
         )
@@ -615,7 +619,7 @@ async fn update_idea(
     if !csrf_ok(&headers, &session.csrf_token) {
         return (StatusCode::FORBIDDEN, "Bad CSRF token").into_response();
     }
-    if let Err(msg) = validate_idea(&payload.title, &payload.body) {
+    if let Err(msg) = validate_idea(&payload.title, &payload.body, &payload.problem) {
         return (StatusCode::BAD_REQUEST, msg).into_response();
     }
     match state
@@ -624,6 +628,7 @@ async fn update_idea(
             id,
             payload.title.trim(),
             payload.body.trim(),
+            payload.problem.trim(),
             session.user_id,
             state.config.is_moderator(&session.user.login),
         )
@@ -945,14 +950,20 @@ async fn delete_comment(
     }
 }
 
-fn validate_idea(title: &str, body: &str) -> Result<(), String> {
+fn validate_idea(title: &str, body: &str, problem: &str) -> Result<(), String> {
     let title_len = title.trim().chars().count();
     let body_len = body.trim().chars().count();
+    let problem_len = problem.trim().chars().count();
     if !(TITLE_MIN..=TITLE_MAX).contains(&title_len) {
         return Err(format!("Title must be {TITLE_MIN}–{TITLE_MAX} characters"));
     }
     if !(BODY_MIN..=BODY_MAX).contains(&body_len) {
         return Err(format!("Body must be {BODY_MIN}–{BODY_MAX} characters"));
+    }
+    if !(PROBLEM_MIN..=PROBLEM_MAX).contains(&problem_len) {
+        return Err(format!(
+            "Problem must be {PROBLEM_MIN}–{PROBLEM_MAX} characters"
+        ));
     }
     Ok(())
 }
@@ -1081,12 +1092,22 @@ mod tests {
     fn validates_idea_lengths() {
         assert!(validate_idea(
             "A valid title",
-            "This body is definitely longer than thirty chars."
+            "This body is definitely longer than thirty chars.",
+            "This problem statement is definitely longer than thirty chars."
         )
         .is_ok());
-        assert!(
-            validate_idea("short", "This body is definitely longer than thirty chars.").is_err()
-        );
+        assert!(validate_idea(
+            "short",
+            "This body is definitely longer than thirty chars.",
+            "This problem statement is definitely longer than thirty chars."
+        )
+        .is_err());
+        assert!(validate_idea(
+            "A valid title",
+            "This body is definitely longer than thirty chars.",
+            "too short"
+        )
+        .is_err());
     }
 
     async fn test_state(base_url: &str) -> AppState {
@@ -1230,6 +1251,7 @@ mod tests {
             .create_idea(
                 "A routed comment upvote",
                 "This body is long enough for a routed comment upvote test.",
+                "This problem statement is long enough to satisfy validation.",
                 author.id,
                 false,
             )

@@ -9,6 +9,7 @@ export interface Idea {
   id: string;
   title: string;
   bodyText: string;
+  problem: string;
   upvoteCount: number;
   commentCount: number;
   viewerHasUpvoted: boolean;
@@ -81,23 +82,34 @@ export async function fetchIdeas(): Promise<Idea[]> {
   return res.json();
 }
 
-export async function createIdea(title: string, body: string, csrfToken: string): Promise<Idea> {
+export async function createIdea(
+  title: string,
+  body: string,
+  problem: string,
+  csrfToken: string
+): Promise<Idea> {
   const res = await fetch('/api/ideas', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-    body: JSON.stringify({ title, body })
+    body: JSON.stringify({ title, body, problem })
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-export async function updateIdea(id: string, title: string, body: string, csrfToken: string): Promise<Idea> {
+export async function updateIdea(
+  id: string,
+  title: string,
+  body: string,
+  problem: string,
+  csrfToken: string
+): Promise<Idea> {
   const res = await fetch(`/api/ideas/${id}`, {
     method: 'PATCH',
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-    body: JSON.stringify({ title, body })
+    body: JSON.stringify({ title, body, problem })
   });
   if (res.status === 401) window.location.href = '/api/auth/login';
   if (!res.ok) throw new Error(await res.text());

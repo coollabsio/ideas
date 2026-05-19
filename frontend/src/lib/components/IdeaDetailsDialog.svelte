@@ -10,6 +10,7 @@
 
   let title = '';
   let body = '';
+  let problem = '';
   let error = '';
   let busy = false;
   let loadedIdeaId: string | null = null;
@@ -18,21 +19,25 @@
   const TITLE_MAX = 300;
   const BODY_MIN = 30;
   const BODY_MAX = 10000;
+  const PROBLEM_MIN = 30;
+  const PROBLEM_MAX = 2000;
 
   $: if (idea && idea.id !== loadedIdeaId) {
     loadedIdeaId = idea.id;
     title = idea.title;
     body = idea.bodyText;
+    problem = idea.problem;
     error = '';
     busy = false;
   }
   $: titleLen = title.trim().length;
   $: bodyLen = body.trim().length;
+  $: problemLen = problem.trim().length;
   $: canEdit = Boolean(idea?.viewerCanEdit && csrfToken);
   $: canDelete = Boolean(idea?.viewerCanDelete && csrfToken);
   $: canClose = Boolean(idea?.viewerCanClose && csrfToken);
   $: canManage = canEdit || canDelete || canClose;
-  $: canSave = canEdit && titleLen >= TITLE_MIN && titleLen <= TITLE_MAX && bodyLen >= BODY_MIN && bodyLen <= BODY_MAX && !busy;
+  $: canSave = canEdit && titleLen >= TITLE_MIN && titleLen <= TITLE_MAX && bodyLen >= BODY_MIN && bodyLen <= BODY_MAX && problemLen >= PROBLEM_MIN && problemLen <= PROBLEM_MAX && !busy;
   $: createdDate = idea ? new Date(idea.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
   $: updatedDate = idea ? new Date(idea.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
 
@@ -47,7 +52,7 @@
     busy = true;
     error = '';
     try {
-      const updated = await updateIdea(idea.id, title.trim(), body.trim(), csrfToken);
+      const updated = await updateIdea(idea.id, title.trim(), body.trim(), problem.trim(), csrfToken);
       onUpdated(updated);
     } catch (err) {
       error = err instanceof Error ? err.message : 'Could not update idea.';
@@ -116,6 +121,10 @@
           <span>Body <small>{bodyLen}/{BODY_MAX}</small></span>
           <textarea class="input textarea" bind:value={body} maxlength={BODY_MAX} required rows="10"></textarea>
         </label>
+        <label>
+          <span>What problem does this solve? <small>{problemLen}/{PROBLEM_MAX}</small></span>
+          <textarea class="input textarea" bind:value={problem} maxlength={PROBLEM_MAX} required rows="5" placeholder="Explain the problem and why an alternative is needed — what is missing or insufficient in existing tools."></textarea>
+        </label>
         {#if error}<p class="error">{error}</p>{/if}
         <footer class="modal-actions">
           <div class="secondary-actions">
@@ -147,6 +156,12 @@
         </div>
         <h3>{idea.title}</h3>
         <p>{idea.bodyText}</p>
+        {#if idea.problem}
+          <div class="idea-problem">
+            <strong>What problem does this solve?</strong>
+            <p>{idea.problem}</p>
+          </div>
+        {/if}
         {#if error}<p class="error">{error}</p>{/if}
         {#if canDelete || canClose}
           <footer class="modal-actions">
@@ -175,3 +190,18 @@
     <CommentSection ideaId={idea.id} {csrfToken} onCommentCountChange={updateCommentCount} />
   </div>
 {/if}
+
+<style>
+  .idea-problem {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  }
+  .idea-problem strong {
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+  .idea-problem p {
+    margin: 0;
+  }
+</style>
