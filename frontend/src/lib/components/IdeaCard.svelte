@@ -53,4 +53,13 @@
       {#if !canVote}<span class="idea-meta-separator idea-signin-separator" aria-hidden="true">·</span><span class="idea-signin">Sign in to vote</span>{/if}
     </footer>
   </div>
+  {#if idea.status === 'done' && idea.doneUrl}
+    <a class="done-card-link" href={idea.doneUrl} target="_blank" rel="noreferrer" aria-label={`Open app for ${idea.title}`} title="Open app" on:click|stopPropagation>
+      <span>Open app</span>
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 17L17 7" />
+        <path d="M9 7h8v8" />
+      </svg>
+    </a>
+  {/if}
 </div>

@@ -76,7 +76,12 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
 .upvote-icon { width: .75rem; height: .75rem; }
 .count { margin-top: .25rem; font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875rem; font-weight: 700; line-height: 1; }
 .idea-main { min-width: 0; flex: 1; }
+.idea-card.done .idea-main { padding-right: 7rem; }
 .box-title { display: block; color: #000; font-size: 1rem; font-weight: 700; line-height: 1.35; }
+.done-card-link { position: absolute; z-index: 2; top: .75rem; right: .75rem; display: inline-flex; height: 2rem; align-items: center; justify-content: center; gap: .35rem; border: 1px solid color-mix(in srgb, var(--success), transparent 45%); border-radius: 9999px; background: color-mix(in srgb, var(--success), transparent 90%); padding: 0 .65rem; color: var(--success); font-size: .75rem; font-weight: 800; letter-spacing: .04em; text-decoration: none; text-transform: uppercase; transition: background-color .15s, border-color .15s, color .15s; }
+.done-card-link:hover { border-color: var(--success); background: var(--success); color: #fff; }
+.done-card-link:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--success), 0 0 0 4px #fff; }
+.done-card-link svg { width: 1rem; height: 1rem; }
 .box-description { margin: .25rem 0 0; display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: #737373; font-size: .75rem; font-weight: 700; line-height: 1.35; }
 .idea-main footer { margin-top: .5rem; display: flex; align-items: center; gap: .5rem; color: #737373; font-size: .75rem; letter-spacing: .025em; text-transform: uppercase; }
 .idea-main footer img { width: 1rem; height: 1rem; border-radius: 9999px; border: 1px solid #e5e5e5; }
@@ -161,6 +166,7 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
   .upvote:hover { border-color: color-mix(in srgb, var(--warning), transparent 60%); color: var(--warning); }
   .upvote.active { border-color: color-mix(in srgb, var(--warning), transparent 50%); background: color-mix(in srgb, var(--warning), transparent 85%); color: var(--warning); }
   .upvote:focus-visible { box-shadow: 0 0 0 2px var(--warning), 0 0 0 4px var(--base); }
+  .done-card-link:focus-visible { box-shadow: 0 0 0 2px var(--success), 0 0 0 4px var(--base); }
   .empty { border-color: var(--coolgray-300); }
   .callout { border-color: #854d0e; background: rgb(113 63 18 / .3); color: #fef08a; }
   .callout strong { color: #fde047; }
@@ -208,6 +214,8 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
   .idea-card.done { box-shadow: inset 3px 0 0 var(--success); }
   .upvote { width: 2.75rem; height: 3.25rem; }
   .idea-main { display: flex; min-width: 0; flex-direction: column; }
+  .idea-card.done .idea-main { padding-right: 0; }
+  .done-card-link { position: static; align-self: flex-start; margin-left: auto; }
   .box-title { font-size: 1rem; line-height: 1.25; }
   .closed-badge, .inprogress-badge, .done-badge { margin: .35rem 0 0; width: fit-content; max-width: 100%; padding: .1rem .5rem; font-size: .6875rem; line-height: 1.3; }
   .box-description { margin-top: .4rem; font-size: .8125rem; line-height: 1.45; -webkit-line-clamp: 3; }
