@@ -31,6 +31,7 @@ const BODY_MIN: usize = 30;
 const BODY_MAX: usize = 10_000;
 const PROBLEM_MIN: usize = 30;
 const PROBLEM_MAX: usize = 2_000;
+const DONE_URL_MAX: usize = 2_000;
 const AUTH_LOGIN_LIMIT: u32 = 10;
 const AUTH_LOGIN_WINDOW: Duration = Duration::from_secs(60);
 const CREATE_IDEA_LIMIT: u32 = 5;
@@ -644,8 +645,10 @@ async fn update_idea(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct StatusBody {
     status: IdeaStatus,
+    done_url: Option<String>,
 }
 
 async fn set_idea_status(
@@ -669,9 +672,19 @@ async fn set_idea_status(
         )
             .into_response();
     }
+    let done_url = match normalize_done_url(payload.status, payload.done_url.as_deref()) {
+        Ok(done_url) => done_url,
+        Err(message) => return (StatusCode::BAD_REQUEST, message).into_response(),
+    };
     match state
         .store
-        .set_idea_status(id, payload.status, session.user_id, actor_is_moderator)
+        .set_idea_status(
+            id,
+            payload.status,
+            done_url,
+            session.user_id,
+            actor_is_moderator,
+        )
         .await
     {
         Ok(idea) => Json(idea).into_response(),
@@ -978,6 +991,28 @@ fn validate_comment(body: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn normalize_done_url(
+    status: IdeaStatus,
+    done_url: Option<&str>,
+) -> Result<Option<String>, String> {
+    if status != IdeaStatus::Done {
+        return Ok(None);
+    }
+
+    let Some(done_url) = done_url.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Err("Done ideas need a completion link".to_string());
+    };
+    if done_url.len() > DONE_URL_MAX {
+        return Err("Completion link is too long".to_string());
+    }
+    let parsed = reqwest::Url::parse(done_url)
+        .map_err(|_| "Completion link must be a valid URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Completion link must use http or https".to_string());
+    }
+    Ok(Some(done_url.to_string()))
+}
+
 async fn get_session(state: &AppState, jar: &CookieJar) -> Option<ideas_domain::Session> {
     let sid = jar.get("sid")?.value().to_string();
     match state.store.session(&sid).await {
@@ -1078,10 +1113,11 @@ async fn fetch_github_user(state: &AppState, token: &str) -> anyhow::Result<GitH
 #[cfg(test)]
 mod tests {
     use super::{
-        router, validate_idea, AppState, Config, RateLimiter, AUTH_LOGIN_LIMIT,
+        normalize_done_url, router, validate_idea, AppState, Config, RateLimiter, AUTH_LOGIN_LIMIT,
         CONTENT_SECURITY_POLICY,
     };
     use axum::{body::Body, http::Request, http::StatusCode};
+    use ideas_domain::IdeaStatus;
     use ideas_storage::Store;
     use reqwest::Client;
     use std::{collections::HashSet, sync::Arc, time::Duration};
@@ -1108,6 +1144,20 @@ mod tests {
             "too short"
         )
         .is_err());
+    }
+
+    #[test]
+    fn done_status_requires_http_link() {
+        assert_eq!(
+            normalize_done_url(IdeaStatus::Done, Some("https://example.com/shipped")).unwrap(),
+            Some("https://example.com/shipped".to_string())
+        );
+        assert!(normalize_done_url(IdeaStatus::Done, None).is_err());
+        assert!(normalize_done_url(IdeaStatus::Done, Some("ftp://example.com/shipped")).is_err());
+        assert_eq!(
+            normalize_done_url(IdeaStatus::Open, Some("not a url")).unwrap(),
+            None
+        );
     }
 
     async fn test_state(base_url: &str) -> AppState {

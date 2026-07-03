@@ -18,7 +18,7 @@
   }
 </script>
 
-<div class="idea-card coolbox group" class:inprogress={idea.status === 'inprogress'} class:closed={idea.closed} role="button" tabindex="0" on:click={() => onOpen(idea)} on:keydown={handleKeydown} aria-label={`Open idea: ${idea.title}`}>
+<div class="idea-card coolbox group" class:inprogress={idea.status === 'inprogress'} class:done={idea.status === 'done'} class:closed={idea.closed} role="button" tabindex="0" on:click={() => onOpen(idea)} on:keydown={handleKeydown} aria-label={`Open idea: ${idea.title}`}>
   <button
     class:active={idea.viewerHasUpvoted}
     class="upvote"
@@ -37,6 +37,7 @@
     <h3 class="box-title">
       {idea.title}
       {#if idea.status === 'inprogress'}<span class="inprogress-badge">In progress</span>{/if}
+      {#if idea.status === 'done'}<span class="done-badge">Done</span>{/if}
       {#if idea.status === 'closed'}<span class="closed-badge">Closed</span>{/if}
     </h3>
     <p class="box-description">{excerpt}</p>

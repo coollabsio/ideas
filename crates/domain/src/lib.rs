@@ -25,6 +25,7 @@ pub struct PublicUser {
 pub enum IdeaStatus {
     Open,
     InProgress,
+    Done,
     Closed,
 }
 
@@ -33,6 +34,7 @@ impl IdeaStatus {
         match self {
             Self::Open => "open",
             Self::InProgress => "inprogress",
+            Self::Done => "done",
             Self::Closed => "closed",
         }
     }
@@ -40,6 +42,7 @@ impl IdeaStatus {
     pub fn from_db(value: &str) -> Self {
         match value {
             "inprogress" => Self::InProgress,
+            "done" => Self::Done,
             "closed" => Self::Closed,
             _ => Self::Open,
         }
@@ -63,6 +66,7 @@ pub struct Idea {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub status: IdeaStatus,
+    pub done_url: Option<String>,
     pub closed: bool,
 }
 

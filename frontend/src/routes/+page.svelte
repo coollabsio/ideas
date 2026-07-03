@@ -24,6 +24,7 @@
     .map((err) => (err instanceof Error ? err.message : 'Could not load app data.'))
     .join(' ');
   $: error = actionError || queryError;
+  $: doneIdeas = ideas.filter((idea) => idea.status === 'done');
   $: inProgressIdeas = ideas.filter((idea) => idea.status === 'inprogress');
   $: openIdeas = ideas.filter((idea) => idea.status === 'open');
   $: closedIdeas = ideas.filter((idea) => idea.status === 'closed');
@@ -35,7 +36,7 @@
   }
 
   function sortIdeas(next: Idea[]) {
-    return [...next].sort((a, b) => b.upvoteCount - a.upvoteCount || b.createdAt.localeCompare(a.createdAt));
+    return [...next].sort((a, b) => Number(b.status === 'done') - Number(a.status === 'done') || b.upvoteCount - a.upvoteCount || b.createdAt.localeCompare(a.createdAt));
   }
 
   function queryResultStore<TData>(options: () => { queryKey: readonly unknown[]; queryFn: () => Promise<TData> }) {
@@ -123,7 +124,7 @@
       <dl class="stats">
         <div>
           <dt>Ideas</dt>
-          <dd>{openIdeas.length + inProgressIdeas.length}</dd>
+          <dd>{openIdeas.length + inProgressIdeas.length + doneIdeas.length}</dd>
         </div>
         <div>
           <dt>Upvotes</dt>
@@ -139,6 +140,20 @@
     {:else if ideas.length === 0}
       <p class="empty">No ideas yet. Sign in with GitHub and submit the first one.</p>
     {:else}
+      {#if doneIdeas.length > 0}
+        <details class="idea-section done-list" open>
+          <summary class="list-head">
+            <h2 id="done-ideas-heading"><span>▸</span> Done <small>({doneIdeas.length})</small></h2>
+            <span>shipped with links</span>
+          </summary>
+          <div class="ideas-list">
+            {#each doneIdeas as idea (idea.id)}
+              <IdeaCard {idea} canVote={Boolean(me.user)} busy={busyIdea === idea.id} onToggle={toggleUpvote} onOpen={(item) => (selectedIdea = item)} />
+            {/each}
+          </div>
+        </details>
+      {/if}
+
       {#if inProgressIdeas.length > 0}
         <details class="idea-section inprogress-list" open>
           <summary class="list-head">

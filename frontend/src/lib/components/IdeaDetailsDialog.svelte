@@ -11,6 +11,7 @@
   let title = '';
   let body = '';
   let problem = '';
+  let doneUrl = '';
   let error = '';
   let busy = false;
   let loadedIdeaId: string | null = null;
@@ -27,6 +28,7 @@
     title = idea.title;
     body = idea.bodyText;
     problem = idea.problem;
+    doneUrl = idea.doneUrl ?? '';
     error = '';
     busy = false;
   }
@@ -38,6 +40,7 @@
   $: canClose = Boolean(idea?.viewerCanClose && csrfToken);
   $: canManage = canEdit || canDelete || canClose;
   $: canSave = canEdit && titleLen >= TITLE_MIN && titleLen <= TITLE_MAX && bodyLen >= BODY_MIN && bodyLen <= BODY_MAX && problemLen >= PROBLEM_MIN && problemLen <= PROBLEM_MAX && !busy;
+  $: canMarkDone = canClose && doneUrl.trim().length > 0 && !busy;
   $: createdDate = idea ? new Date(idea.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
   $: updatedDate = idea ? new Date(idea.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
 
@@ -66,7 +69,7 @@
     busy = true;
     error = '';
     try {
-      const updated = await setIdeaStatus(idea.id, status, csrfToken);
+      const updated = await setIdeaStatus(idea.id, status, csrfToken, status === 'done' ? doneUrl.trim() : undefined);
       onUpdated(updated);
     } catch (err) {
       error = err instanceof Error ? err.message : 'Could not update idea status.';
@@ -126,13 +129,24 @@
           <textarea class="input textarea" bind:value={problem} maxlength={PROBLEM_MAX} required rows="5" placeholder="Explain the problem and why an alternative is needed — what is missing or insufficient in existing tools."></textarea>
         </label>
         {#if error}<p class="error">{error}</p>{/if}
+        {#if canClose && idea.status !== 'done'}
+          <label class="done-url-field">
+            <span>Completion link</span>
+            <input class="input" bind:value={doneUrl} type="url" placeholder="https://example.com/shipped" />
+          </label>
+        {/if}
         <footer class="modal-actions">
           <div class="secondary-actions">
             {#if canClose}
               {#if idea.status === 'open'}
                 <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('inprogress')}>Mark in progress</button>
+                <button class="button button-ghost" type="button" disabled={!canMarkDone} on:click={() => updateStatus('done')}>Mark done</button>
                 <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
               {:else if idea.status === 'inprogress'}
+                <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('open')}>Reopen</button>
+                <button class="button button-ghost" type="button" disabled={!canMarkDone} on:click={() => updateStatus('done')}>Mark done</button>
+                <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
+              {:else if idea.status === 'done'}
                 <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('open')}>Reopen</button>
                 <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
               {:else}
@@ -152,6 +166,7 @@
         <div class="idea-details-status">
           <span class="count">{idea.upvoteCount} upvotes</span>
           {#if idea.status === 'inprogress'}<span class="inprogress-badge">In progress</span>{/if}
+          {#if idea.status === 'done'}<span class="done-badge">Done</span>{/if}
           {#if idea.status === 'closed'}<span class="closed-badge">Closed</span>{/if}
         </div>
         <h3>{idea.title}</h3>
@@ -162,15 +177,29 @@
             <p>{idea.problem}</p>
           </div>
         {/if}
+        {#if idea.status === 'done' && idea.doneUrl}
+          <p class="done-link"><a href={idea.doneUrl} target="_blank" rel="noreferrer">View completed work</a></p>
+        {/if}
         {#if error}<p class="error">{error}</p>{/if}
         {#if canDelete || canClose}
+          {#if canClose && idea.status !== 'done'}
+            <label class="done-url-field">
+              <span>Completion link</span>
+              <input class="input" bind:value={doneUrl} type="url" placeholder="https://example.com/shipped" />
+            </label>
+          {/if}
           <footer class="modal-actions">
             <div class="secondary-actions">
               {#if canClose}
                 {#if idea.status === 'open'}
                   <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('inprogress')}>Mark in progress</button>
+                  <button class="button button-ghost" type="button" disabled={!canMarkDone} on:click={() => updateStatus('done')}>Mark done</button>
                   <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
                 {:else if idea.status === 'inprogress'}
+                  <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('open')}>Reopen</button>
+                  <button class="button button-ghost" type="button" disabled={!canMarkDone} on:click={() => updateStatus('done')}>Mark done</button>
+                  <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
+                {:else if idea.status === 'done'}
                   <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('open')}>Reopen</button>
                   <button class="button button-ghost" type="button" disabled={busy} on:click={() => updateStatus('closed')}>Close idea</button>
                 {:else}
@@ -203,5 +232,13 @@
   }
   .idea-problem p {
     margin: 0;
+  }
+  .done-url-field {
+    display: block;
+    margin-top: 1rem;
+    max-width: 44rem;
+  }
+  .done-link {
+    margin: 1rem 0 0;
   }
 </style>

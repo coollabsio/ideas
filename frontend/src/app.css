@@ -13,6 +13,7 @@
   --coolgray-200: #202020;
   --coolgray-300: #242424;
   --coolgray-400: #282828;
+  --success: #16a34a;
   --error: #dc2626;
 }
 
@@ -83,9 +84,10 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
 .idea-main footer strong { font-weight: 700; text-transform: none; }
 .idea-main footer time { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: none; }
 .idea-date, .idea-comments, .idea-signin { white-space: nowrap; }
-.closed-badge, .inprogress-badge { margin-left: .5rem; display: inline-block; border-radius: 9999px; padding: .125rem .5rem; vertical-align: middle; font-size: .75rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.closed-badge, .inprogress-badge, .done-badge { margin-left: .5rem; display: inline-block; border-radius: 9999px; padding: .125rem .5rem; vertical-align: middle; font-size: .75rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 .closed-badge { border: 1px solid color-mix(in srgb, var(--error), transparent 50%); background: color-mix(in srgb, var(--error), transparent 90%); color: var(--error); }
 .inprogress-badge { border: 1px solid color-mix(in srgb, var(--warning), transparent 35%); background: color-mix(in srgb, var(--warning), transparent 82%); color: #a16207; }
+.done-badge { border: 1px solid color-mix(in srgb, var(--success), transparent 40%); background: color-mix(in srgb, var(--success), transparent 88%); color: var(--success); }
 .empty { border: 1px dashed #d4d4d4; border-radius: .25rem; padding: 2rem 1rem; text-align: center; color: #737373; font-size: .875rem; }
 .callout { margin-bottom: 1rem; border-radius: .5rem; border: 1px solid #fde047; background: #fefce8; padding: 1rem; color: #a16207; font-size: .875rem; }
 .callout strong { color: #854d0e; }
@@ -94,7 +96,7 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
 .idea-section summary h2 span, .closed-list summary span { display: inline-block; transform: rotate(0deg); transition: transform .15s; }
 .idea-section[open] summary h2 span, .closed-list[open] summary span { transform: rotate(90deg); }
 .idea-section .ideas-list { margin-top: .75rem; }
-.inprogress-list { margin-bottom: 1.5rem; }
+.done-list, .inprogress-list { margin-bottom: 1.5rem; }
 .all-ideas-list { margin-bottom: 1.5rem; }
 .closed-list { margin-top: 1.5rem; }
 .closed-list summary { display: flex; cursor: pointer; list-style: none; align-items: center; gap: .5rem; border-top: 1px solid #e5e5e5; padding-top: 1rem; color: #737373; font-size: .875rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
@@ -125,8 +127,9 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
 .similar-idea-meta { color: #737373; font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; text-transform: uppercase; }
 .idea-details-modal { max-height: 90vh; overflow: auto; }
 .idea-details-modal header strong { color: inherit; }
-.modal-actions { align-items: flex-end !important; flex-wrap: wrap; }
-.secondary-actions, .primary-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.modal-actions { align-items: center !important; justify-content: space-between; gap: 1rem; }
+.secondary-actions, .primary-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.primary-actions { margin-left: auto; }
 .idea-details-readonly { margin-top: 1rem; }
 .idea-details-readonly h3 { margin-top: .75rem; font-size: 1.25rem; }
 .idea-details-readonly p { margin-top: .75rem; color: #404040; white-space: pre-wrap; line-height: 1.6; }
@@ -163,6 +166,7 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
   .callout strong { color: #fde047; }
   .closed-list summary { border-color: var(--coolgray-200); }
   .inprogress-badge { color: var(--warning); }
+  .done-badge { color: var(--success); }
   .footer strong, .footer a { color: #d4d4d4; }
   .input { background: var(--coolgray-100); color: #fff; box-shadow: inset 4px 0 0 transparent, inset 0 0 0 2px var(--coolgray-300); }
   .input::placeholder { color: #525252; }
@@ -201,10 +205,11 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
 
   .coolbox { gap: .65rem; padding: .65rem; }
   .idea-card.inprogress { box-shadow: inset 3px 0 0 var(--warning); }
+  .idea-card.done { box-shadow: inset 3px 0 0 var(--success); }
   .upvote { width: 2.75rem; height: 3.25rem; }
   .idea-main { display: flex; min-width: 0; flex-direction: column; }
   .box-title { font-size: 1rem; line-height: 1.25; }
-  .closed-badge, .inprogress-badge { margin: .35rem 0 0; width: fit-content; max-width: 100%; padding: .1rem .5rem; font-size: .6875rem; line-height: 1.3; }
+  .closed-badge, .inprogress-badge, .done-badge { margin: .35rem 0 0; width: fit-content; max-width: 100%; padding: .1rem .5rem; font-size: .6875rem; line-height: 1.3; }
   .box-description { margin-top: .4rem; font-size: .8125rem; line-height: 1.45; -webkit-line-clamp: 3; }
   .idea-main footer { margin-top: .75rem; display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .55rem; font-size: .75rem; letter-spacing: 0; line-height: 1.35; text-transform: none; }
   .idea-author { flex: 1 1 100%; max-width: 100%; }
@@ -224,6 +229,7 @@ h1 { margin-bottom: .5rem; font-size: 1.875rem; }
   .idea-details-status { gap: .4rem; font-size: .75rem; line-height: 1.4; }
   .modal-actions, .secondary-actions, .primary-actions { width: 100%; }
   .secondary-actions, .primary-actions { justify-content: stretch; }
+  .primary-actions { margin-left: 0; }
   .modal-actions .button { flex: 1 1 auto; }
 
   .comments-head { align-items: flex-start; flex-direction: column; gap: .25rem; }

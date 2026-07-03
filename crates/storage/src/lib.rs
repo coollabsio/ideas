@@ -28,6 +28,10 @@ const ADD_IDEA_PROBLEM_UP_SQL: &str =
     include_str!("../migrations/20260519120000_add_idea_problem.up.sql");
 const ADD_IDEA_PROBLEM_DOWN_SQL: &str =
     include_str!("../migrations/20260519120000_add_idea_problem.down.sql");
+const ADD_DONE_STATUS_UP_SQL: &str =
+    include_str!("../migrations/20260520120000_add_done_status.up.sql");
+const ADD_DONE_STATUS_DOWN_SQL: &str =
+    include_str!("../migrations/20260520120000_add_done_status.down.sql");
 
 fn embedded_migrator() -> Migrator {
     Migrator {
@@ -101,6 +105,20 @@ fn embedded_migrator() -> Migrator {
                 MigrationType::ReversibleDown,
                 Cow::Borrowed(ADD_IDEA_PROBLEM_DOWN_SQL),
                 ADD_IDEA_PROBLEM_DOWN_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260520120000,
+                Cow::Borrowed("add_done_status"),
+                MigrationType::ReversibleUp,
+                Cow::Borrowed(ADD_DONE_STATUS_UP_SQL),
+                ADD_DONE_STATUS_UP_SQL.starts_with("-- no-transaction"),
+            ),
+            Migration::new(
+                20260520120000,
+                Cow::Borrowed("add_done_status"),
+                MigrationType::ReversibleDown,
+                Cow::Borrowed(ADD_DONE_STATUS_DOWN_SQL),
+                ADD_DONE_STATUS_DOWN_SQL.starts_with("-- no-transaction"),
             ),
         ]),
         ..Migrator::DEFAULT
@@ -585,8 +603,9 @@ impl Store {
         let viewer = viewer_id.map(|id| id.to_string());
         let moderator = i64::from(viewer_is_moderator);
         let comment_count_sql = self.comment_count_sql().await?;
+        let done_url_sql = self.done_url_sql().await?;
         let sql = format!(
-            "SELECT i.id, i.title, i.body, i.problem, i.status, i.created_at, i.updated_at,
+            "SELECT i.id, i.title, i.body, i.problem, i.status, {done_url_sql} AS done_url, i.created_at, i.updated_at,
                     u.login, u.avatar_url,
                     COUNT(v.idea_id) AS upvote_count,
                     {comment_count_sql} AS comment_count,
@@ -598,7 +617,7 @@ impl Store {
              JOIN users u ON u.id = i.author_user_id
              LEFT JOIN upvotes v ON v.idea_id = i.id
              GROUP BY i.id
-             ORDER BY upvote_count DESC, i.created_at DESC"
+             ORDER BY CASE WHEN i.status = 'done' THEN 0 ELSE 1 END, upvote_count DESC, i.created_at DESC"
         );
         let rows = sqlx::query(&sql)
             .bind(&viewer)
@@ -626,8 +645,9 @@ impl Store {
         let viewer = viewer_id.map(|id| id.to_string());
         let moderator = i64::from(viewer_is_moderator);
         let comment_count_sql = self.comment_count_sql().await?;
+        let done_url_sql = self.done_url_sql().await?;
         let sql = format!(
-            "SELECT i.id, i.title, i.body, i.problem, i.status, i.created_at, i.updated_at,
+            "SELECT i.id, i.title, i.body, i.problem, i.status, {done_url_sql} AS done_url, i.created_at, i.updated_at,
                     u.login, u.avatar_url,
                     COUNT(v.idea_id) AS upvote_count,
                     {comment_count_sql} AS comment_count,
@@ -687,14 +707,21 @@ impl Store {
         &self,
         id: Uuid,
         status: IdeaStatus,
+        done_url: Option<String>,
         actor_id: Uuid,
         actor_is_moderator: bool,
     ) -> Result<Idea> {
         if !actor_is_moderator {
             return Err(StorageError::NotFound("idea"));
         }
-        let changed = sqlx::query("UPDATE ideas SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+        let stored_done_url = if status == IdeaStatus::Done {
+            done_url
+        } else {
+            None
+        };
+        let changed = sqlx::query("UPDATE ideas SET status = ?, done_url = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
             .bind(status.as_str())
+            .bind(stored_done_url)
             .bind(id.to_string())
             .execute(&self.pool)
             .await?
@@ -717,7 +744,7 @@ impl Store {
         } else {
             IdeaStatus::Open
         };
-        self.set_idea_status(id, status, actor_id, actor_is_moderator)
+        self.set_idea_status(id, status, None, actor_id, actor_is_moderator)
             .await
     }
 
@@ -960,6 +987,14 @@ impl Store {
         }
     }
 
+    async fn done_url_sql(&self) -> Result<&'static str> {
+        if self.done_url_column_exists().await? {
+            Ok("i.done_url")
+        } else {
+            Ok("NULL")
+        }
+    }
+
     async fn comment_upvote_sql(&self) -> Result<(&'static str, &'static str)> {
         if self.comment_upvotes_table_exists().await? {
             Ok((
@@ -980,6 +1015,14 @@ impl Store {
         )
         .fetch_optional(&self.pool)
         .await?;
+        Ok(exists.is_some())
+    }
+
+    async fn done_url_column_exists(&self) -> Result<bool> {
+        let exists: Option<i64> =
+            sqlx::query_scalar("SELECT 1 FROM pragma_table_info('ideas') WHERE name = 'done_url'")
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(exists.is_some())
     }
 
@@ -1031,6 +1074,7 @@ fn row_to_idea(row: sqlx::sqlite::SqliteRow) -> std::result::Result<Idea, sqlx::
         created_at: parse_dt(row.try_get("created_at")?),
         updated_at: parse_dt(row.try_get("updated_at")?),
         status,
+        done_url: row.try_get("done_url")?,
         closed: status == IdeaStatus::Closed,
     })
 }
@@ -1203,7 +1247,7 @@ mod tests {
             .expect("idea");
 
         let in_progress = store
-            .set_idea_status(idea.id, IdeaStatus::InProgress, moderator.id, true)
+            .set_idea_status(idea.id, IdeaStatus::InProgress, None, moderator.id, true)
             .await
             .expect("moderator mark in progress");
         assert_eq!(in_progress.status, IdeaStatus::InProgress);
@@ -1212,6 +1256,98 @@ mod tests {
         let public_view = store.idea(idea.id, None, false).await.expect("public view");
         assert_eq!(public_view.status, IdeaStatus::InProgress);
         assert!(!public_view.closed);
+    }
+
+    #[tokio::test]
+    async fn moderator_can_mark_idea_done_with_link() {
+        let store = test_store().await;
+        let author = store
+            .upsert_user(18, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let moderator = store
+            .upsert_user(19, "moderator", "https://example.com/moderator.png")
+            .await
+            .expect("moderator");
+        let idea = store
+            .create_idea(
+                "An idea ready to be done",
+                "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("idea");
+
+        let done = store
+            .set_idea_status(
+                idea.id,
+                IdeaStatus::Done,
+                Some("https://example.com/shipped".to_string()),
+                moderator.id,
+                true,
+            )
+            .await
+            .expect("moderator mark done");
+
+        assert_eq!(done.status, IdeaStatus::Done);
+        assert_eq!(
+            done.done_url.as_deref(),
+            Some("https://example.com/shipped")
+        );
+        assert!(!done.closed);
+    }
+
+    #[tokio::test]
+    async fn done_ideas_are_listed_before_other_statuses() {
+        let store = test_store().await;
+        let author = store
+            .upsert_user(20, "author", "https://example.com/author.png")
+            .await
+            .expect("author");
+        let moderator = store
+            .upsert_user(21, "moderator", "https://example.com/moderator.png")
+            .await
+            .expect("moderator");
+        let open = store
+            .create_idea(
+                "An open idea with many votes",
+                "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("open idea");
+        let done = store
+            .create_idea(
+                "A done idea with no votes",
+                "This is long enough body text for a valid idea.",
+                "This problem statement is long enough to pass validation.",
+                author.id,
+                false,
+            )
+            .await
+            .expect("done idea");
+        store
+            .set_upvote(open.id, moderator.id, true, true)
+            .await
+            .expect("upvote");
+        store
+            .set_idea_status(
+                done.id,
+                IdeaStatus::Done,
+                Some("https://example.com/shipped".to_string()),
+                moderator.id,
+                true,
+            )
+            .await
+            .expect("mark done");
+
+        let ideas = store.list_ideas(None, false).await.expect("ideas");
+
+        assert_eq!(ideas.first().map(|idea| idea.id), Some(done.id));
     }
 
     #[tokio::test]
@@ -1233,7 +1369,7 @@ mod tests {
             .expect("idea");
 
         let error = store
-            .set_idea_status(idea.id, IdeaStatus::InProgress, author.id, false)
+            .set_idea_status(idea.id, IdeaStatus::InProgress, None, author.id, false)
             .await
             .expect_err("regular author cannot mark in progress");
         assert!(matches!(error, StorageError::NotFound("idea")));
